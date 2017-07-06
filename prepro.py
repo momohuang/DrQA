@@ -11,7 +11,7 @@ import multiprocessing
 import logging
 
 parser = argparse.ArgumentParser(
-    description='Preprocessing data files, about 10 minitues to run.'
+    description='Preprocessing data files, about 10 minutes to run.'
 )
 parser.add_argument('--wv_file', default='glove/glove.840B.300d.txt',
                     help='path to word vector file.')
@@ -53,9 +53,8 @@ def load_glove_vocab(file):
             vocab.add(token)
     return vocab
 
-glove_vocab = load_glove_vocab(wv_file)
+glove_vocab = load_glove_vocab(wv_file) # return a "set" of vocabulary
 log.info('glove loaded.')
-
 
 def flatten_json(file, proc_func):
     with open(file, encoding="utf8") as f:
@@ -197,6 +196,7 @@ def token2id(docs, vocab, unk_id=None):
     w2id = {w: i for i, w in enumerate(vocab)}
     ids = [[w2id[w] if w in w2id else unk_id for w in doc] for doc in docs]
     return ids
+
 vocab, counter = build_vocab(question_tokens, context_tokens)
 # tokens
 question_ids = token2id(question_tokens, vocab, unk_id=1)
@@ -231,6 +231,7 @@ def build_embedding(embed_file, targ_vocab, dim_vec):
             if token in w2id:
                 emb[w2id[token]] = [float(v) for v in elems[-wv_dim:]]
     return emb
+
 embedding = build_embedding(wv_file, vocab, wv_dim)
 log.info('got embedding matrix.')
 
