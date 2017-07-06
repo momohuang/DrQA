@@ -139,7 +139,7 @@ train['answer_start_token'], train['answer_end_token'] = \
               train.answer_start, train.answer_end)])
 initial_len = len(train)
 train.dropna(inplace=True)
-log.info('drop {} inconsistent samples.'.format(len(train) - initial_len))
+log.info('drop {} inconsistent samples.'.format(initial_len - len(train)))
 log.info('answer pointer generated.')
 
 questions = list(train.question) + list(dev.question)
@@ -234,8 +234,8 @@ def build_embedding(embed_file, targ_vocab, dim_vec):
 embedding = build_embedding(wv_file, vocab, wv_dim)
 log.info('got embedding matrix.')
 
-train.to_csv('SQuAD/train.csv', index=False)
-dev.to_csv('SQuAD/dev.csv', index=False)
+train.to_csv('SQuAD/train.csv', index=False, encoding='utf8')
+dev.to_csv('SQuAD/dev.csv', index=False, encoding='utf8')
 meta = {
     'vocab': vocab,
     'embedding': embedding.tolist()
