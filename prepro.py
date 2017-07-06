@@ -8,7 +8,6 @@ import pandas as pd
 import argparse
 import collections
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
 import logging
 
 parser = argparse.ArgumentParser(
@@ -47,24 +46,25 @@ def normalize_text(text):
 
 def load_glove_vocab(file):
     vocab = set()
-    with open(file) as f:
+    with open(file, encoding="utf8") as f:
         for line in f:
             elems = line.split()
             token = normalize_text(''.join(elems[0:-wv_dim]))
             vocab.add(token)
     return vocab
+
 glove_vocab = load_glove_vocab(wv_file)
 log.info('glove loaded.')
 
 
 def flatten_json(file, proc_func):
-    with open(file) as f:
+    with open(file, encoding="utf8") as f:
         data = json.load(f)['data']
-    with ProcessPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-        rows = executor.map(proc_func, data)
+    rows = []
+    for i in range(len(data)):
+        rows.append(proc_func(data[i]))
     rows = sum(rows, [])
     return rows
-
 
 def proc_train(article):
     rows = []
@@ -79,7 +79,6 @@ def proc_train(article):
             rows.append((id_, context, question, answer, answer_start, answer_end))
     return rows
 
-
 def proc_dev(article):
     rows = []
     for paragraph in article['paragraphs']:
@@ -89,6 +88,7 @@ def proc_dev(article):
             answers = [a['text'] for a in answers]
             rows.append((id_, context, question, answers))
     return rows
+
 train = flatten_json(trn_file, proc_train)
 train = pd.DataFrame(train,
                      columns=['id', 'context', 'question', 'answer',
@@ -132,6 +132,7 @@ def get_answer_index(context, answer, context_token, answer_start, answer_end):
                 return (None, None)
         p_token += 1
     return (None, None)
+
 train['answer_start_token'], train['answer_end_token'] = \
     zip(*[get_answer_index(a, b, c, d, e) for a, b, c, d, e in
           zip(train.context, train.answer, context_tokens,
@@ -223,7 +224,7 @@ def build_embedding(embed_file, targ_vocab, dim_vec):
     vocab_size = len(targ_vocab)
     emb = np.zeros((vocab_size, dim_vec))
     w2id = {w: i for i, w in enumerate(targ_vocab)}
-    with open(embed_file) as f:
+    with open(embed_file, encoding="utf8") as f:
         for line in f:
             elems = line.split()
             token = normalize_text(''.join(elems[0:-wv_dim]))
