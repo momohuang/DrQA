@@ -104,6 +104,7 @@ def pre_proc(text):
     # make spaces clean
     text = re.sub('\s+', ' ', text)
     return text
+
 context_iter = (pre_proc(c) for c in train.context)
 context_tokens = [[w.text for w in doc] for doc in nlp.pipe(
     context_iter, batch_size=64, n_threads=multiprocessing.cpu_count())]
@@ -137,7 +138,7 @@ train['answer_start_token'], train['answer_end_token'] = \
           zip(train.context, train.answer, context_tokens,
               train.answer_start, train.answer_end)])
 initial_len = len(train)
-train.dropna(inplace=True)
+train.dropna(inplace=True) # modify self DataFrame
 log.info('drop {} inconsistent samples.'.format(initial_len - len(train)))
 log.info('answer pointer generated.')
 
@@ -168,11 +169,11 @@ for question, context in zip(question_docs, context_docs):
     match_origin = [w.text in question_word for w in context]
     match_lower = [w.text.lower() in question_lower for w in context]
     match_lemma = [(w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower()) in question_lemma for w in context]
-    context_features.append(list(zip(match_origin, match_lower, match_lemma)))
+    context_features.append(list(zip(match_origin, match_lower, match_lemma))) # zip returns generator, so we need to evaluate it using list()
 log.info('tokens generated')
 
 
-def build_vocab(questions, contexts):
+def build_vocab(questions, contexts): # vocabulary will also be sorted accordingly
     if args.sort_all:
         counter = collections.Counter(w for doc in questions + contexts for w in doc)
         vocab = sorted([t for t in counter if t in glove_vocab], key=counter.get, reverse=True)
@@ -235,6 +236,7 @@ def build_embedding(embed_file, targ_vocab, dim_vec):
 embedding = build_embedding(wv_file, vocab, wv_dim)
 log.info('got embedding matrix.')
 
+# don't store row name in csv
 train.to_csv('SQuAD/train.csv', index=False, encoding='utf8')
 dev.to_csv('SQuAD/dev.csv', index=False, encoding='utf8')
 meta = {
