@@ -291,7 +291,7 @@ class BatchGen:
             text = list(batch[-2]) # raw text
             span = list(batch[-1]) # character span for each words
 
-            if self.gpu:
+            if self.gpu: # page locked memory for async data transfer
                 context_id = context_id.pin_memory()
                 context_feature = context_feature.pin_memory()
                 context_tag = context_tag.pin_memory()

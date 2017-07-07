@@ -91,6 +91,7 @@ class DocReaderModel(object):
 
         # Reset any partially fixed parameters (e.g. rare words)
         self.reset_parameters()
+        #TODO
 
     def predict(self, ex):
         # Eval mode
@@ -98,13 +99,13 @@ class DocReaderModel(object):
 
         # Transfer to GPU
         if self.opt['cuda']:
-            inputs = [Variable(e.cuda(async=True), volatile=True)
+            inputs = [Variable(e.cuda(async=True), volatile=True) # volatile means no gradient is needed
                       for e in ex[:7]]
         else:
             inputs = [Variable(e, volatile=True) for e in ex[:7]]
 
         # Run forward
-        score_s, score_e = self.network(*inputs)
+        score_s, score_e = self.network(*inputs) # [batch_size, context_len]
 
         # Transfer to CPU/normal tensors for numpy ops
         score_s = score_s.data.cpu()
@@ -123,12 +124,12 @@ class DocReaderModel(object):
             s_offset, e_offset = spans[i][s_idx][0], spans[i][e_idx][1]
             predictions.append(text[i][s_offset:e_offset])
 
-        return predictions
+        return predictions # list of strings
 
     def reset_parameters(self):
         # Reset fixed embeddings to original value
         if self.opt['tune_partial'] > 0:
-            offset = self.opt['tune_partial'] + 2
+            offset = self.opt['tune_partial'] + 2 # <PAD> and <UNK>
             if offset < self.network.embedding.weight.data.size(0):
                 self.network.embedding.weight.data[offset:] \
                     = self.network.fixed_embedding
@@ -138,7 +139,7 @@ class DocReaderModel(object):
             'state_dict': {
                 'network': self.network.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
-                'updates': self.updates
+                'updates': self.updates # how many updates
             },
             'config': self.opt,
             'epoch': epoch
