@@ -62,7 +62,6 @@ parser.add_argument('--question_merge', default='self_attn')
 parser.add_argument('--doc_layers', type=int, default=3)
 parser.add_argument('--question_layers', type=int, default=3)
 parser.add_argument('--hidden_size', type=int, default=128)
-parser.add_argument('--num_features', type=int, default=4)
 parser.add_argument('--pos', type=bool, default=True)
 parser.add_argument('--pos_size', type=int, default=56,
                     help='how many kinds of POS tags.')
@@ -145,7 +144,7 @@ def main():
         best_val_score = 0.0
 
     for epoch in range(epoch_0, epoch_0 + args.epoches):
-        log.warn('Epoch {}'.format(epoch))
+        log.warning('Epoch {}'.format(epoch))
         # train
         batches = BatchGen(train, batch_size=args.batch_size, gpu=args.cuda)
         start = datetime.now()
@@ -162,7 +161,7 @@ def main():
             for batch in batches:
                 predictions.extend(model.predict(batch))
             em, f1 = score(predictions, dev_y)
-            log.warn("dev EM: {} F1: {}".format(em, f1))
+            log.warning("Epoch {} - dev EM: {} F1: {}".format(epoch, em, f1))
         # save
         if not args.save_last_only or epoch == epoch_0 + args.epoches - 1:
             model_file = os.path.join(model_dir, 'checkpoint_epoch_{}.pt'.format(epoch))
@@ -190,12 +189,14 @@ def load_data(opt):
     opt['vocab_size'] = embedding.size(0)
     opt['embedding_dim'] = embedding.size(1)
     if not opt['fix_embeddings']:
+        # embedding[0] <PAD> = all 0, embedding[1] <UNK> = random normal
         embedding[1] = torch.normal(means=torch.zeros(opt['embedding_dim']), std=1.)
     with open(args.data_file, 'rb') as f:
         data = msgpack.load(f, encoding='utf8')
     train_orig = pd.read_csv('SQuAD/train.csv')
     dev_orig = pd.read_csv('SQuAD/dev.csv')
-    train = list(zip(
+    opt['num_features'] = len(data['trn_context_features'][0][0])
+    train = list(zip( # list() due to lazy evaluation of zip
         data['trn_context_ids'],
         data['trn_context_features'],
         data['trn_context_tags'],
@@ -216,9 +217,8 @@ def load_data(opt):
         data['dev_context_spans']
     ))
     dev_y = dev_orig['answers'].tolist()[:len(dev)]
-    dev_y = [eval(y) for y in dev_y]
+    dev_y = [eval(y) for y in dev_y] # y is str, eval(y) is list
     return train, dev, dev_y, embedding, opt
-
 
 class BatchGen:
     def __init__(self, data, batch_size, gpu, evaluation=False):
@@ -230,14 +230,17 @@ class BatchGen:
         self.batch_size = batch_size
         self.eval = evaluation
         self.gpu = gpu
+
         # sort by len
         # if not evaluation:
         #     data = sorted(data, key=lambda x:len(x[0]))
-        # shuffle
+
+        # random shuffle for training
         if not evaluation:
             indices = list(range(len(data)))
             random.shuffle(indices)
             data = [data[i] for i in indices]
+
         # chunk into batches
         data = [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
         self.data = data
@@ -272,6 +275,7 @@ class BatchGen:
             context_ent = torch.LongTensor(batch_size, context_len).fill_(0)
             for i, doc in enumerate(batch[3]):
                 context_ent[i, :len(doc)] = torch.LongTensor(doc)
+
             question_len = max(len(x) for x in batch[4])
             question_id = torch.LongTensor(batch_size, question_len).fill_(0)
             for i, doc in enumerate(batch[4]):
@@ -279,11 +283,14 @@ class BatchGen:
 
             context_mask = torch.eq(context_id, 0)
             question_mask = torch.eq(question_id, 0)
+
             if not self.eval:
                 y_s = torch.LongTensor(batch[5])
                 y_e = torch.LongTensor(batch[6])
-            text = list(batch[-2])
-            span = list(batch[-1])
+
+            text = list(batch[-2]) # raw text
+            span = list(batch[-1]) # character span for each words
+
             if self.gpu:
                 context_id = context_id.pin_memory()
                 context_feature = context_feature.pin_memory()
@@ -292,13 +299,13 @@ class BatchGen:
                 context_mask = context_mask.pin_memory()
                 question_id = question_id.pin_memory()
                 question_mask = question_mask.pin_memory()
+
             if self.eval:
                 yield (context_id, context_feature, context_tag, context_ent, context_mask,
                        question_id, question_mask, text, span)
             else:
                 yield (context_id, context_feature, context_tag, context_ent, context_mask,
                        question_id, question_mask, y_s, y_e, text, span)
-
 
 def _normalize_answer(s):
     def remove_articles(text):
@@ -316,7 +323,6 @@ def _normalize_answer(s):
 
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
-
 def _exact_match(pred, answers):
     if pred is None or answers is None:
         return False
@@ -325,7 +331,6 @@ def _exact_match(pred, answers):
         if pred == _normalize_answer(a):
             return True
     return False
-
 
 def _f1_score(pred, answers):
     def _score(g_tokens, a_tokens):
@@ -343,7 +348,6 @@ def _f1_score(pred, answers):
     g_tokens = _normalize_answer(pred).split()
     scores = [_score(g_tokens, _normalize_answer(a).split()) for a in answers]
     return max(scores)
-
 
 def score(pred, truth):
     assert len(pred) == len(truth)
