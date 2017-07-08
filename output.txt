@@ -1,4 +1,4 @@
-Original run 1
-Original run 2
-no Exact match run 1
-tune all embedding run 1
+Original run 1: dev EM: 68.61873226111636 F1: 77.89724470528145
+Original run 2: dev EM: 68.67549668874172 F1: 78.03895984986448
+no Exact match run 1: dev EM: 66.9441816461684 F1: 76.43481553600684
+tune all embedding run 1: dev EM: 68.40113528855251 F1: 77.82505881327128

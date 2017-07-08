@@ -239,8 +239,8 @@ class LinearSeqAttn(nn.Module):
 # Functional
 # ------------------------------------------------------------------------------
 
-
-def uniform_weights(x, x_mask):
+# by default in PyTorch, +-*/ are all element-wise
+def uniform_weights(x, x_mask): # used in rnn_reader.py
     """Return uniform weights over non-masked input."""
     alpha = Variable(torch.ones(x.size(0), x.size(1)))
     if x.data.is_cuda:
@@ -249,9 +249,11 @@ def uniform_weights(x, x_mask):
     alpha = alpha / alpha.sum(1).expand(alpha.size())
     return alpha
 
-
-def weighted_avg(x, weights):
-    """x = batch * len * d
-    weights = batch * len
+# bmm: batch matrix multiplication
+# unsqueeze: add singleton dimension
+# squeeze: remove singleton dimension
+def weighted_avg(x, weights): # used in rnn_reader.py
+    """ x = batch * len * d
+        weights = batch * len
     """
     return weights.unsqueeze(1).bmm(x).squeeze(1)

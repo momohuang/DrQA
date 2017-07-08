@@ -91,7 +91,6 @@ class DocReaderModel(object):
 
         # Reset any partially fixed parameters (e.g. rare words)
         self.reset_parameters()
-        #TODO
 
     def predict(self, ex):
         # Eval mode

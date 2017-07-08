@@ -34,6 +34,7 @@ class RnnDocReader(nn.Module):
             elif opt['tune_partial'] > 0:
                 assert opt['tune_partial'] + 2 < embedding.size(0)
                 fixed_embedding = embedding[opt['tune_partial'] + 2:]
+                # a persistent buffer for the nn.Module
                 self.register_buffer('fixed_embedding', fixed_embedding)
                 self.fixed_embedding = fixed_embedding
         else:  # random initialized
@@ -136,12 +137,23 @@ class RnnDocReader(nn.Module):
         if self.opt['ner']:
             x1_ner_emb = self.ner_embedding(x1_ner)
             drnn_input_list.append(x1_ner_emb)
-        drnn_input = torch.cat(drnn_input_list, 2)
-        # Encode document with RNN
-        doc_hiddens = self.doc_rnn(drnn_input, x1_mask)
 
-        # Encode question with RNN + merge hiddens
-        question_hiddens = self.question_rnn(x2_emb, x2_mask)
+        x1_input = torch.cat(drnn_input_list, 2)
+        x2_input = x2_emb
+
+        # Now the features are ready
+        # x1_input: [batch_size, doc_len, all_feats]
+        #           including wvec, match, tf, Qemb, pos, ner
+        # x2_input: [batch_size, doc_len, all_feats]
+        #           including wvec
+
+        # Encode document with RNN
+        doc_hiddens = self.doc_rnn(x1_input, x1_mask)
+
+        # Encode question with RNN
+        question_hiddens = self.question_rnn(x2_input, x2_mask)
+
+        # Merge question hiddens for answer generation
         if self.opt['question_merge'] == 'avg':
             q_merge_weights = layers.uniform_weights(question_hiddens, x2_mask)
         elif self.opt['question_merge'] == 'self_attn':
