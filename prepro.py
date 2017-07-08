@@ -224,6 +224,7 @@ context_tag_ids = token2id(context_tags, vocab_tag)
 # entities, build dict on the fly
 counter_ent = collections.Counter(w for doc in context_ents for w in doc)
 vocab_ent = sorted(counter_ent, key=counter_ent.get, reverse=True)
+log.info('Found {} POS tags.'.format(len(vocab_tag)))
 log.info('Found {} entity tags: {}'.format(len(vocab_ent), vocab_ent))
 context_ent_ids = token2id(context_ents, vocab_ent)
 log.info('vocab built.')
