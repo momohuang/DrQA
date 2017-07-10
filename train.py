@@ -21,15 +21,21 @@ parser.add_argument('--log_file', default='output.log',
                     help='path for log file.')
 parser.add_argument('--log_per_updates', type=int, default=3,
                     help='log model loss per x updates (mini-batches).')
-parser.add_argument('--data_file', default='SQuAD/data.msgpack',
-                    help='path to preprocessed data file.')
+parser.add_argument('--train_meta', default='SQuAD/train_meta.msgpack',
+                    help='path to preprocessed training meta file.')
+parser.add_argument('--train_data', default='SQuAD/train_data.msgpack',
+                    help='path to preprocessed training data file.')
+parser.add_argument('--dev_meta', default='SQuAD/dev_meta.msgpack',
+                    help='path to preprocessed validation meta file.')
+parser.add_argument('--dev_data', default='SQuAD/dev_data.msgpack',
+                    help='path to preprocessed validation data file.')
 parser.add_argument('--model_dir', default='models',
                     help='path to store saved models.')
 parser.add_argument('--save_last_only', action='store_true',
                     help='only save the final models.')
 parser.add_argument('--eval_per_epoch', type=int, default=1,
                     help='perform evaluation per x epoches.')
-parser.add_argument('--seed', type=int, default=411,
+parser.add_argument('--seed', type=int, default=1023,
                     help='random seed for data shuffling, dropout, etc.')
 parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available(),
                     help='whether to use GPU acceleration.')
@@ -107,10 +113,11 @@ ch.setFormatter(formatter)
 log.addHandler(fh)
 log.addHandler(ch)
 
-
 def main():
     log.info('[program starts.]')
-    train, dev, dev_y, embedding, opt = load_data(vars(args))
+    opt = vars(args) # changing opt will change args
+    train, train_embedding, opt = load_train_data(opt)
+    dev, dev_embedding, dev_answer, opt = load_dev_data(opt)
     log.info('[Data loaded.]')
 
     if args.resume:
@@ -119,15 +126,17 @@ def main():
         if args.resume_options:
             opt = checkpoint['config']
         state_dict = checkpoint['state_dict']
-        model = DocReaderModel(opt, embedding, state_dict)
+        model = DocReaderModel(opt, train_embedding, state_dict)
         epoch_0 = checkpoint['epoch'] + 1
         for i in range(checkpoint['epoch']):
             random.shuffle(list(range(len(train))))  # synchronize random seed
         if args.reduce_lr:
             lr_decay(model.optimizer, lr_decay=args.reduce_lr)
     else:
-        model = DocReaderModel(opt, embedding)
+        model = DocReaderModel(opt, train_embedding)
         epoch_0 = 1
+
+    model.setup_eval_embed(dev_embedding)
 
     if args.cuda:
         model.cuda()
@@ -137,7 +146,7 @@ def main():
         predictions = []
         for batch in batches:
             predictions.extend(model.predict(batch))
-        em, f1 = score(predictions, dev_y)
+        em, f1 = score(predictions, dev_answer)
         log.info("[dev EM: {} F1: {}]".format(em, f1))
         best_val_score = f1
     else:
@@ -160,7 +169,7 @@ def main():
             predictions = []
             for batch in batches:
                 predictions.extend(model.predict(batch))
-            em, f1 = score(predictions, dev_y)
+            em, f1 = score(predictions, dev_answer)
             log.warning("Epoch {} - dev EM: {} F1: {}".format(epoch, em, f1))
         # save
         if not args.save_last_only or epoch == epoch_0 + args.epoches - 1:
@@ -181,44 +190,57 @@ def lr_decay(optimizer, lr_decay):
     return optimizer
 
 
-def load_data(opt):
-    with open('SQuAD/meta.msgpack', 'rb') as f:
+def load_train_data(opt):
+    with open(args.train_meta, 'rb') as f:
         meta = msgpack.load(f, encoding='utf8')
     embedding = torch.Tensor(meta['embedding'])
-    opt['pretrained_words'] = True
-    opt['vocab_size'] = embedding.size(0)
     opt['embedding_dim'] = embedding.size(1)
-    if not opt['fix_embeddings']:
-        # embedding[0] <PAD> = all 0, embedding[1] <UNK> = random normal
-        embedding[1] = torch.normal(means=torch.zeros(opt['embedding_dim']), std=1.)
-    with open(args.data_file, 'rb') as f:
+
+    with open(args.train_data, 'rb') as f:
         data = msgpack.load(f, encoding='utf8')
-    train_orig = pd.read_csv('SQuAD/train.csv')
-    dev_orig = pd.read_csv('SQuAD/dev.csv')
-    opt['num_features'] = len(data['trn_context_features'][0][0])
+    data_orig = pd.read_csv('SQuAD/train.csv')
+
+    opt['num_features'] = len(data['context_features'][0][0])
+    span = data_orig['context_span'].tolist()
     train = list(zip( # list() due to lazy evaluation of zip
-        data['trn_context_ids'],
-        data['trn_context_features'],
-        data['trn_context_tags'],
-        data['trn_context_ents'],
-        data['trn_question_ids'],
-        train_orig['answer_start_token'].tolist(),
-        train_orig['answer_end_token'].tolist(),
-        data['trn_context_text'],
-        data['trn_context_spans']
+        data['context_ids'],
+        data['context_features'],
+        data['context_tags'],
+        data['context_ents'],
+        data['question_ids'],
+        data_orig['answer_start_token'].tolist(),
+        data_orig['answer_end_token'].tolist(),
+        data_orig['context'].tolist(),
+        [eval(x) for x in span]
     ))
+    return train, embedding, opt
+
+def load_dev_data(opt): # can be extended to true test set
+    with open(args.dev_meta, 'rb') as f:
+        meta = msgpack.load(f, encoding='utf8')
+    embedding = torch.Tensor(meta['embedding'])
+    assert opt['embedding_dim'] == embedding.size(1)
+
+    with open(args.dev_data, 'rb') as f:
+        data = msgpack.load(f, encoding='utf8')
+    data_orig = pd.read_csv('SQuAD/dev.csv')
+
+    assert opt['num_features'] == len(data['context_features'][0][0])
+    span = data_orig['context_span'].tolist()
     dev = list(zip(
-        data['dev_context_ids'],
-        data['dev_context_features'],
-        data['dev_context_tags'],
-        data['dev_context_ents'],
-        data['dev_question_ids'],
-        data['dev_context_text'],
-        data['dev_context_spans']
+        data['context_ids'],
+        data['context_features'],
+        data['context_tags'],
+        data['context_ents'],
+        data['question_ids'],
+        data_orig['context'].tolist(),
+        [eval(x) for x in span]
     ))
-    dev_y = dev_orig['answers'].tolist()[:len(dev)]
-    dev_y = [eval(y) for y in dev_y] # y is str, eval(y) is list
-    return train, dev, dev_y, embedding, opt
+
+    assert len(dev) == len(data_orig['answers'].tolist())
+    dev_answer = data_orig['answers'].tolist()
+    dev_answer = [eval(ans) for ans in dev_answer] # ans is str, eval(ans) is list
+    return dev, embedding, dev_answer, opt
 
 class BatchGen:
     def __init__(self, data, batch_size, gpu, evaluation=False):

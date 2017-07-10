@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree. An additional grant
 # of patent rights can be found in the PATENTS file in the same directory.
 import torch
+import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
@@ -23,18 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 class DocReaderModel(object):
-    """High level model that handles intializing the underlying network
+    """
+    High level model that handles intializing the underlying network
     architecture, saving, updating examples, and predicting examples.
     """
 
-    def __init__(self, opt, embedding=None, state_dict=None):
+    def __init__(self, opt, embedding, state_dict=None):
         # Book-keeping.
         self.opt = opt
         self.updates = state_dict['updates'] if state_dict else 0
         self.train_loss = AverageMeter()
 
         # Building network.
-        self.network = RnnDocReader(opt, embedding=embedding)
+        self.network = RnnDocReader(opt, embedding)
         if state_dict:
             new_state = set(self.network.state_dict().keys())
             for k in list(state_dict['network'].keys()):
@@ -55,6 +57,14 @@ class DocReaderModel(object):
             raise RuntimeError('Unsupported optimizer: %s' % opt['optimizer'])
         if state_dict:
             self.optimizer.load_state_dict(state_dict['optimizer'])
+
+    def setup_eval_embed(self, eval_embed, padding_idx = 0):
+        # eval_embed should be a supermatrix of training embedding
+        self.network.eval_embed = nn.Embedding(eval_embed.size(0),
+                                               eval_embed.size(1),
+                                               padding_idx = padding_idx)
+        for p in self.network.eval_embed.parameters():
+            p.volatile = True
 
     def update(self, ex):
         # Train mode
@@ -96,15 +106,19 @@ class DocReaderModel(object):
         # Eval mode
         self.network.eval()
 
+        # Transfer trained embedding to evaluation embedding
+        self.update_eval_embed()
+
         # Transfer to GPU
         if self.opt['cuda']:
-            inputs = [Variable(e.cuda(async=True), volatile=True) # volatile means no gradient is needed
+            # volatile means no gradient is needed
+            inputs = [Variable(e.cuda(async=True), volatile=True)
                       for e in ex[:7]]
         else:
             inputs = [Variable(e, volatile=True) for e in ex[:7]]
 
         # Run forward
-        score_s, score_e = self.network(*inputs) # [batch_size, context_len]
+        score_s, score_e = self.network(*inputs) # output: [batch_size, context_len]
 
         # Transfer to CPU/normal tensors for numpy ops
         score_s = score_s.data.cpu()
@@ -124,6 +138,12 @@ class DocReaderModel(object):
             predictions.append(text[i][s_offset:e_offset])
 
         return predictions # list of strings
+
+    def update_eval_embed(self):
+        # update evaluation embedding to trained embedding
+        offset = self.opt['tune_partial'] + 2
+        self.network.eval_embed.weight.data[0:offset] \
+            = self.network.embedding.weight.data[0:offset]
 
     def reset_parameters(self):
         # Reset fixed embeddings to original value
