@@ -11,7 +11,7 @@ from collections import Counter
 import torch
 import msgpack
 import pandas as pd
-from drqa.model import DocReaderModel
+from drqa.model import LEGOReaderModel
 from general_utils import score, BatchGen
 
 parser = argparse.ArgumentParser(
@@ -127,14 +127,14 @@ def main():
         if args.resume_options:
             opt = checkpoint['config']
         state_dict = checkpoint['state_dict']
-        model = DocReaderModel(opt, train_embedding, state_dict)
+        model = LEGOReaderModel(opt, train_embedding, state_dict)
         epoch_0 = checkpoint['epoch'] + 1
         for i in range(checkpoint['epoch']):
             random.shuffle(list(range(len(train))))  # synchronize random seed
         if args.reduce_lr:
             lr_decay(model.optimizer, lr_decay=args.reduce_lr)
     else:
-        model = DocReaderModel(opt, train_embedding)
+        model = LEGOReaderModel(opt, train_embedding)
         epoch_0 = 1
 
     model.setup_eval_embed(dev_embedding)

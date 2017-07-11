@@ -23,7 +23,7 @@ from .rnn_reader import RnnDocReader
 logger = logging.getLogger(__name__)
 
 
-class DocReaderModel(object):
+class LEGOReaderModel(object):
     """
     High level model that handles intializing the underlying network
     architecture, saving, updating examples, and predicting examples.
@@ -40,9 +40,6 @@ class DocReaderModel(object):
         self.network = RnnDocReader(opt, embedding)
         if state_dict:
             new_state = set(self.network.state_dict().keys())
-            for k in list(state_dict['network'].keys()):
-                if k not in new_state:
-                    del state_dict['network'][k]
             self.network.load_state_dict(state_dict['network'])
 
         # Building optimizer.
@@ -59,6 +56,8 @@ class DocReaderModel(object):
         if state_dict:
             self.optimizer.load_state_dict(state_dict['optimizer'])
 
+    # allow the evaluation embedding be larger than training embedding
+    # this is helpful if we have pretrained word embeddings
     def setup_eval_embed(self, eval_embed, padding_idx = 0):
         # eval_embed should be a supermatrix of training embedding
         self.network.eval_embed = nn.Embedding(eval_embed.size(0),
@@ -103,7 +102,7 @@ class DocReaderModel(object):
         self.updates += 1
 
         # Reset any partially fixed parameters (e.g. rare words)
-        self.reset_parameters()
+        self.reset_embeddings()
         self.eval_embed_transfer = True
 
     def predict(self, ex):
@@ -151,7 +150,7 @@ class DocReaderModel(object):
         self.network.eval_embed.weight.data[0:offset] \
             = self.network.embedding.weight.data[0:offset]
 
-    def reset_parameters(self):
+    def reset_embeddings(self):
         # Reset fixed embeddings to original value
         if self.opt['tune_partial'] > 0:
             offset = self.opt['tune_partial'] + 2 # <PAD> and <UNK>

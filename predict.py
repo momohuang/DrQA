@@ -12,7 +12,7 @@ from collections import Counter
 import torch
 import msgpack
 import pandas as pd
-from drqa.model import DocReaderModel
+from drqa.model import LEGOReaderModel
 from general_utils import score, BatchGen
 
 parser = argparse.ArgumentParser(
@@ -21,8 +21,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-o', '--output', default='',
                     help='path for the output of model prediction.')
 parser.add_argument('-m', '--model', default='',
-                    help='testing model file name (in `model_dir`). '
-                         'e.g. "checkpoint_epoch_11.pt"')
+                    help='testing model pathname, e.g. "models/checkpoint_epoch_11.pt"')
 parser.add_argument('--test_meta', default='SQuAD/test_meta.msgpack',
                     help='path to preprocessed testing meta file.')
 parser.add_argument('--test_data', default='SQuAD/test_data.msgpack',
@@ -66,7 +65,7 @@ def main():
 
     test, test_embedding, test_answer = load_test_data(opt)
     opt['vocab_size'] = test_embedding.size(0)
-    model = DocReaderModel(opt, state_dict = state_dict)
+    model = LEGOReaderModel(opt, state_dict = state_dict)
     log.info('[Data loaded.]')
 
     model.setup_eval_embed(test_embedding)

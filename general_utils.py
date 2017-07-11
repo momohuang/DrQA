@@ -15,6 +15,10 @@ import json
 import numpy as np
 import pandas as pd
 
+#===========================================================================
+#================= All for preprocessing SQuAD data set ====================
+#===========================================================================
+
 def flatten_json(file, proc_func):
     with open(file, encoding="utf8") as f:
         data = json.load(f)['data']
@@ -105,6 +109,10 @@ def token2id(docs, vocab, unk_id=None):
     ids = [[w2id[w] if w in w2id else unk_id for w in doc] for doc in docs]
     return ids
 
+#===========================================================================
+#================ For batch generation (train & predict) ===================
+#===========================================================================
+
 class BatchGen:
     def __init__(self, data, batch_size, gpu, evaluation=False):
         '''
@@ -115,10 +123,6 @@ class BatchGen:
         self.batch_size = batch_size
         self.eval = evaluation
         self.gpu = gpu
-
-        # sort by len
-        # if not evaluation:
-        #     data = sorted(data, key=lambda x:len(x[0]))
 
         # random shuffle for training
         if not evaluation:
@@ -191,6 +195,10 @@ class BatchGen:
             else:
                 yield (context_id, context_feature, context_tag, context_ent, context_mask,
                        question_id, question_mask, y_s, y_e, text, span)
+
+#===========================================================================
+#=================== For standard evaluation in SQuAD ======================
+#===========================================================================
 
 def _normalize_answer(s):
     def remove_articles(text):
