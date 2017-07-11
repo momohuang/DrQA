@@ -15,26 +15,27 @@ class RnnDocReader(nn.Module):
     """Network for the Document Reader module of DrQA."""
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
 
-    def __init__(self, opt, embedding, padding_idx=0):
+    def __init__(self, opt, embedding=None, padding_idx=0):
         super(RnnDocReader, self).__init__()
         # Store config
         self.opt = opt
 
         # Word embeddings
-        self.embedding = nn.Embedding(embedding.size(0),
-                                      embedding.size(1),
+        self.embedding = nn.Embedding(opt['vocab_size'],
+                                      opt['embedding_dim'],
                                       padding_idx=padding_idx)
-        self.embedding.weight.data = embedding
-        if opt['fix_embeddings']:
-            assert opt['tune_partial'] == 0
-            for p in self.embedding.parameters():
-                p.requires_grad = False
-        elif opt['tune_partial'] > 0:
-            assert opt['tune_partial'] + 2 < embedding.size(0)
-            fixed_embedding = embedding[opt['tune_partial'] + 2:]
-            # a persistent buffer for the nn.Module
-            self.register_buffer('fixed_embedding', fixed_embedding)
-            self.fixed_embedding = fixed_embedding
+        if embedding is not None:
+            self.embedding.weight.data = embedding
+            if opt['fix_embeddings']:
+                assert opt['tune_partial'] == 0
+                for p in self.embedding.parameters():
+                    p.requires_grad = False
+            elif opt['tune_partial'] > 0:
+                assert opt['tune_partial'] + 2 < embedding.size(0)
+                fixed_embedding = embedding[opt['tune_partial'] + 2:]
+                # a persistent buffer for the nn.Module
+                self.register_buffer('fixed_embedding', fixed_embedding)
+                self.fixed_embedding = fixed_embedding
 
         if opt['pos']:
             self.pos_embedding = nn.Embedding(opt['pos_size'], opt['pos_dim'])

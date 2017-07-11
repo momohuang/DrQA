@@ -65,6 +65,7 @@ def main():
     log.info('[model loaded.]')
 
     test, test_embedding, test_answer = load_test_data(opt)
+    opt['vocab_size'] = test_embedding.size(0)
     model = DocReaderModel(opt, state_dict = state_dict)
     log.info('[Data loaded.]')
 
@@ -109,7 +110,7 @@ def load_test_data(opt):
     assert len(test) == len(data_orig['answers'].tolist())
     test_answer = data_orig['answers'].tolist()
     test_answer = [eval(ans) for ans in test_answer] # ans is str, eval(ans) is list
-    return test, embedding, test_answer # test_answer can be a dummy variable
+    return test, embedding, test_answer # test_answer may be a dummy variable
 
 if __name__ == '__main__':
     main()

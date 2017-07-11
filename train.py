@@ -12,9 +12,10 @@ import torch
 import msgpack
 import pandas as pd
 from drqa.model import DocReaderModel
+from prepro_utils import score, BatchGen
 
 parser = argparse.ArgumentParser(
-    description='Train a Document Reader model.'
+    description='Train a Lego Reader model.'
 )
 # system
 parser.add_argument('--log_file', default='output.log',
@@ -117,7 +118,7 @@ def main():
     log.info('[program starts.]')
     opt = vars(args) # changing opt will change args
     train, train_embedding, opt = load_train_data(opt)
-    dev, dev_embedding, dev_answer, opt = load_dev_data(opt)
+    dev, dev_embedding, dev_answer = load_dev_data(opt)
     log.info('[Data loaded.]')
 
     if args.resume:
@@ -194,6 +195,7 @@ def load_train_data(opt):
     with open(args.train_meta, 'rb') as f:
         meta = msgpack.load(f, encoding='utf8')
     embedding = torch.Tensor(meta['embedding'])
+    opt['vocab_size'] = embedding.size(0)
     opt['embedding_dim'] = embedding.size(1)
 
     with open(args.train_data, 'rb') as f:
@@ -240,147 +242,7 @@ def load_dev_data(opt): # can be extended to true test set
     assert len(dev) == len(data_orig['answers'].tolist())
     dev_answer = data_orig['answers'].tolist()
     dev_answer = [eval(ans) for ans in dev_answer] # ans is str, eval(ans) is list
-    return dev, embedding, dev_answer, opt
-
-class BatchGen:
-    def __init__(self, data, batch_size, gpu, evaluation=False):
-        '''
-        input:
-            data - list of lists
-            batch_size - int
-        '''
-        self.batch_size = batch_size
-        self.eval = evaluation
-        self.gpu = gpu
-
-        # sort by len
-        # if not evaluation:
-        #     data = sorted(data, key=lambda x:len(x[0]))
-
-        # random shuffle for training
-        if not evaluation:
-            indices = list(range(len(data)))
-            random.shuffle(indices)
-            data = [data[i] for i in indices]
-
-        # chunk into batches
-        data = [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
-        self.data = data
-
-    def __len__(self):
-        return len(self.data)
-
-    def __iter__(self):
-        for batch in self.data:
-            batch_size = len(batch)
-            batch = list(zip(*batch))
-            if self.eval:
-                assert len(batch) == 7
-            else:
-                assert len(batch) == 9
-
-            context_len = max(len(x) for x in batch[0])
-            context_id = torch.LongTensor(batch_size, context_len).fill_(0)
-            for i, doc in enumerate(batch[0]):
-                context_id[i, :len(doc)] = torch.LongTensor(doc)
-
-            feature_len = len(batch[1][0][0])
-            context_feature = torch.Tensor(batch_size, context_len, feature_len).fill_(0)
-            for i, doc in enumerate(batch[1]):
-                for j, feature in enumerate(doc):
-                    context_feature[i, j, :] = torch.Tensor(feature)
-
-            context_tag = torch.LongTensor(batch_size, context_len).fill_(0)
-            for i, doc in enumerate(batch[2]):
-                context_tag[i, :len(doc)] = torch.LongTensor(doc)
-
-            context_ent = torch.LongTensor(batch_size, context_len).fill_(0)
-            for i, doc in enumerate(batch[3]):
-                context_ent[i, :len(doc)] = torch.LongTensor(doc)
-
-            question_len = max(len(x) for x in batch[4])
-            question_id = torch.LongTensor(batch_size, question_len).fill_(0)
-            for i, doc in enumerate(batch[4]):
-                question_id[i, :len(doc)] = torch.LongTensor(doc)
-
-            context_mask = torch.eq(context_id, 0)
-            question_mask = torch.eq(question_id, 0)
-
-            if not self.eval:
-                y_s = torch.LongTensor(batch[5])
-                y_e = torch.LongTensor(batch[6])
-
-            text = list(batch[-2]) # raw text
-            span = list(batch[-1]) # character span for each words
-
-            if self.gpu: # page locked memory for async data transfer
-                context_id = context_id.pin_memory()
-                context_feature = context_feature.pin_memory()
-                context_tag = context_tag.pin_memory()
-                context_ent = context_ent.pin_memory()
-                context_mask = context_mask.pin_memory()
-                question_id = question_id.pin_memory()
-                question_mask = question_mask.pin_memory()
-
-            if self.eval:
-                yield (context_id, context_feature, context_tag, context_ent, context_mask,
-                       question_id, question_mask, text, span)
-            else:
-                yield (context_id, context_feature, context_tag, context_ent, context_mask,
-                       question_id, question_mask, y_s, y_e, text, span)
-
-def _normalize_answer(s):
-    def remove_articles(text):
-        return re.sub(r'\b(a|an|the)\b', ' ', text)
-
-    def white_space_fix(text):
-        return ' '.join(text.split())
-
-    def remove_punc(text):
-        exclude = set(string.punctuation)
-        return ''.join(ch for ch in text if ch not in exclude)
-
-    def lower(text):
-        return text.lower()
-
-    return white_space_fix(remove_articles(remove_punc(lower(s))))
-
-def _exact_match(pred, answers):
-    if pred is None or answers is None:
-        return False
-    pred = _normalize_answer(pred)
-    for a in answers:
-        if pred == _normalize_answer(a):
-            return True
-    return False
-
-def _f1_score(pred, answers):
-    def _score(g_tokens, a_tokens):
-        common = Counter(g_tokens) & Counter(a_tokens)
-        num_same = sum(common.values())
-        if num_same == 0:
-            return 0
-        precision = 1. * num_same / len(g_tokens)
-        recall = 1. * num_same / len(a_tokens)
-        f1 = (2 * precision * recall) / (precision + recall)
-        return f1
-
-    if pred is None or answers is None:
-        return 0
-    g_tokens = _normalize_answer(pred).split()
-    scores = [_score(g_tokens, _normalize_answer(a).split()) for a in answers]
-    return max(scores)
-
-def score(pred, truth):
-    assert len(pred) == len(truth)
-    f1 = em = total = 0
-    for p, t in zip(pred, truth):
-        total += 1
-        em += _exact_match(p, t)
-        f1 += _f1_score(p, t)
-    em = 100. * em / total
-    f1 = 100. * f1 / total
-    return em, f1
+    return dev, embedding, dev_answer
 
 if __name__ == '__main__':
     main()

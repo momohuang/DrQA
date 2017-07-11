@@ -29,10 +29,11 @@ class DocReaderModel(object):
     architecture, saving, updating examples, and predicting examples.
     """
 
-    def __init__(self, opt, embedding, state_dict=None):
+    def __init__(self, opt, embedding=None, state_dict=None):
         # Book-keeping.
         self.opt = opt
         self.updates = state_dict['updates'] if state_dict else 0
+        self.eval_embed_transfer = True
         self.train_loss = AverageMeter()
 
         # Building network.
@@ -63,8 +64,10 @@ class DocReaderModel(object):
         self.network.eval_embed = nn.Embedding(eval_embed.size(0),
                                                eval_embed.size(1),
                                                padding_idx = padding_idx)
+        self.network.eval_embed.weight.data = eval_embed
         for p in self.network.eval_embed.parameters():
             p.volatile = True
+        self.eval_embed_transfer = True
 
     def update(self, ex):
         # Train mode
@@ -101,13 +104,16 @@ class DocReaderModel(object):
 
         # Reset any partially fixed parameters (e.g. rare words)
         self.reset_parameters()
+        self.eval_embed_transfer = True
 
     def predict(self, ex):
         # Eval mode
         self.network.eval()
 
         # Transfer trained embedding to evaluation embedding
-        self.update_eval_embed()
+        if self.eval_embed_transfer:
+            self.update_eval_embed()
+            self.eval_embed_transfer = False
 
         # Transfer to GPU
         if self.opt['cuda']:

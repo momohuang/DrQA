@@ -49,7 +49,7 @@ def proc_test(article):
     for paragraph in article['paragraphs']:
         context = paragraph['context']
         for qa in paragraph['qas']:
-            id_, question, answers = qa['id'], qa['question']
+            id_, question = qa['id'], qa['question']
             if args.no_answer:
                 answers = ['', '', '']
             else:
@@ -77,7 +77,7 @@ log.info('context span for test is generated.')
 testC_tags, testC_ents, testC_features = feature_gen(testC_docs, testQ_docs, args.no_match)
 log.info('features for test is generated.')
 
-with open('SQuAD/train_meta.msgpack', 'wb') as f:
+with open('SQuAD/train_meta.msgpack', 'rb') as f:
     meta = msgpack.load(f, encoding='utf8')
 tr_vocab = meta['vocab']
 def build_test_vocab(questions, contexts): # most vocabulary comes from tr_vocab
