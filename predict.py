@@ -13,7 +13,7 @@ import torch
 import msgpack
 import pandas as pd
 from drqa.model import DocReaderModel
-from prepro_utils import score, BatchGen
+from general_utils import score, BatchGen
 
 parser = argparse.ArgumentParser(
     description='Predict using a Lego Reader model.'
