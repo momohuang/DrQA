@@ -12,7 +12,7 @@ import torch
 import msgpack
 import pandas as pd
 from drqa.model import DocReaderModel
-from prepro_utils import score, BatchGen
+from general_utils import score, BatchGen
 
 parser = argparse.ArgumentParser(
     description='Train a Lego Reader model.'
@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(
 # system
 parser.add_argument('--log_file', default='output.log',
                     help='path for log file.')
-parser.add_argument('--log_per_updates', type=int, default=3,
+parser.add_argument('--log_per_updates', type=int, default=20,
                     help='log model loss per x updates (mini-batches).')
 parser.add_argument('--train_meta', default='SQuAD/train_meta.msgpack',
                     help='path to preprocessed training meta file.')

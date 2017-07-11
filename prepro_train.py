@@ -9,7 +9,7 @@ import argparse
 import collections
 import multiprocessing
 import logging
-from prepro_utils import flatten_json, normalize_text, build_embedding, load_glove_vocab, pre_proc, get_context_span, feature_gen, token2id
+from general_utils import flatten_json, normalize_text, build_embedding, load_glove_vocab, pre_proc, get_context_span, feature_gen, token2id
 
 parser = argparse.ArgumentParser(
     description='Preprocessing train + dev files, about 10 minutes to run.'
