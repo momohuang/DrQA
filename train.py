@@ -79,7 +79,7 @@ parser.add_argument('--ner_size', type=int, default=19,
                     help='how many kinds of named entity tags.')
 parser.add_argument('--ner_dim', type=int, default=8,
                     help='the embedding dimension for named entity tags.')
-parser.add_argument('--use_qemb', type=bool, default=True)
+parser.add_argument('--no_wvec_align', dest='wvec_align', action='store_false')
 parser.add_argument('--concat_rnn_layers', type=bool, default=True)
 parser.add_argument('--dropout_emb', type=float, default=0.3)
 parser.add_argument('--dropout_rnn', type=float, default=0.3)

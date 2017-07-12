@@ -42,12 +42,12 @@ class RnnDocReader(nn.Module):
         if opt['ner']:
             self.ner_embedding = nn.Embedding(opt['ner_size'], opt['ner_dim'])
         # Projection for attention weighted question
-        if opt['use_qemb']:
+        if opt['wvec_align']:
             self.qemb_match = layers.SeqAttnMatch(opt['embedding_dim'])
 
         # Input size to RNN: word emb + question emb + manual features
         doc_input_size = opt['embedding_dim'] + opt['num_features']
-        if opt['use_qemb']:
+        if opt['wvec_align']:
             doc_input_size += opt['embedding_dim']
         if opt['pos']:
             doc_input_size += opt['pos_dim']
@@ -111,7 +111,7 @@ class RnnDocReader(nn.Module):
         x2 = question word indices             [batch * len_q]
         x2_mask = question padding mask        [batch * len_q]
         """
-        # Embed both document and question
+        # Word embedding for both document and question
         if self.training:
             x1_emb = self.embedding(x1)
             x2_emb = self.embedding(x2)
@@ -128,7 +128,7 @@ class RnnDocReader(nn.Module):
 
         drnn_input_list = [x1_emb, x1_f]
         # Add attention-weighted question representation
-        if self.opt['use_qemb']:
+        if self.opt['wvec_align']:
             x2_weighted_emb = self.qemb_match(x1_emb, x2_emb, x2_mask)
             drnn_input_list.append(x2_weighted_emb)
         if self.opt['pos']:
@@ -142,9 +142,9 @@ class RnnDocReader(nn.Module):
         x2_input = x2_emb
 
         # Now the features are ready
-        # x1_input: [batch_size, doc_len, all_feats]
+        # x1_input: [batch_size, doc_len, x1_feats]
         #           including wvec, match, tf, Qemb, pos, ner
-        # x2_input: [batch_size, doc_len, all_feats]
+        # x2_input: [batch_size, doc_len, x2_feats]
         #           including wvec
 
         # Encode document with RNN
@@ -163,4 +163,4 @@ class RnnDocReader(nn.Module):
         # Predict scores for starting and ending position
         start_scores = self.start_attn(doc_hiddens, question_hidden, x1_mask)
         end_scores = self.end_attn(doc_hiddens, question_hidden, x1_mask)
-        return start_scores, end_scores
+        return start_scores, end_scores # -inf to inf

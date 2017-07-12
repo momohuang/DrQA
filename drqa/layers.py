@@ -46,7 +46,7 @@ class StackedBRNN(nn.Module):
         # We don't care.
         return self._forward_unpadded(x, x_mask)
 
-    def _forward_unpadded(self, x, x_mask):
+    def _forward_unpadded(self, x, x_mask): # x_mask not used
         """Faster encoding that ignores any padding."""
         # Transpose batch and sequence dims
         x = x.transpose(0, 1)
@@ -206,14 +206,7 @@ class BilinearSeqAttn(nn.Module):
         Wy = self.linear(y) if self.linear is not None else y
         xWy = x.bmm(Wy.unsqueeze(2)).squeeze(2)
         xWy.data.masked_fill_(x_mask.data, -float('inf'))
-        if self.training:
-            # In training we output log-softmax for NLL
-            alpha = F.log_softmax(xWy)
-        else:
-            # ...Otherwise 0-1 probabilities
-            alpha = F.softmax(xWy)
-        return alpha
-
+        return xWy
 
 class LinearSeqAttn(nn.Module):
     """Self attention over a sequence:

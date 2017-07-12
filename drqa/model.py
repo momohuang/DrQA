@@ -86,7 +86,7 @@ class LEGOReaderModel(object):
         score_s, score_e = self.network(*inputs)
 
         # Compute loss and accuracies
-        loss = F.nll_loss(score_s, target_s) + F.nll_loss(score_e, target_e)
+        loss = F.cross_entropy(score_s, target_s) + F.cross_entropy(score_e, target_e)
         self.train_loss.update(loss.data[0], ex[0].size(0))
 
         # Clear gradients and run backward
@@ -124,6 +124,8 @@ class LEGOReaderModel(object):
 
         # Run forward
         score_s, score_e = self.network(*inputs) # output: [batch_size, context_len]
+        score_s = F.softmax(score_s)
+        score_e = F.softmax(score_e)
 
         # Transfer to CPU/normal tensors for numpy ops
         score_s = score_s.data.cpu()
