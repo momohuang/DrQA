@@ -3,7 +3,10 @@ Original run 2: dev EM: 68.67549668874172 F1: 78.03895984986448
 no Exact match run 1: dev EM: 66.9441816461684 F1: 76.43481553600684
 tune all embedding run 1: dev EM: 68.40113528855251 F1: 77.82505881327128
 
------- below all use improved tokenization (handle dashes and []) ------
+------ below all use improved tokenization (handle dashes and [] etc.) ------
 
 Improved tokenization run 1: dev EM: 69.25260170293284 F1: 78.44314735464995
-Improved tokenization run 2:
+Improved tokenization run 2: dev EM: 69.10122989593188 F1: 78.56207404335898
+Random vector for unknown words run 1: dev EM: 69.05392620624409 F1: 78.11589025440102
+No word vector pre-alignment run 1: dev EM: 68.39167455061495 F1: 77.55068472418104
+Gated input for the first LSTM layer run 1: dev EM: 69.18637653736991 F1: 78.31315547097128

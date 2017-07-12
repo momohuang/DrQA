@@ -140,15 +140,26 @@ class StackedBRNN(nn.Module):
 
 class SeqAttnMatch(nn.Module):
     """Given sequences X and Y, match sequence Y to each element in X.
-    * o_i = sum(alpha_j * y_j) for i in X
-    * alpha_j = softmax(y_j * x_i)
+    * o_i = sum(alpha_ij * y_j) for i in X
+    * alpha_ij = softmax(proj(y_j) * proj(x_i))
     """
-    def __init__(self, input_size, identity=False):
+    def __init__(self, input_size, attention_type='relu_FC', normalize='sumY'):
         super(SeqAttnMatch, self).__init__()
-        if not identity:
+        if attention_type == 'relu_FC':
             self.linear = nn.Linear(input_size, input_size)
-        else:
+        elif attention_type == 'inner_prod':
             self.linear = None
+        elif attention_type == 'trainable_inner_prod':
+            self.linear = nn.Linear(input_size, 1)
+        elif attention_type == 'trainable_inner_prod_ext':
+            self.linear = nn.Linear(3 * input_size, 1)
+        else:
+            raise NotImplementedError('attention_type = %s' % attention_type)
+        self.attention_type = attention_type
+
+        if normalize != 'sumX' and normalize != 'sumY':
+            raise NotImplementedError('normalize = %s' % normalize)
+        self.normalize = normalize
 
     def forward(self, x, y, y_mask):
         """Input shapes:
@@ -159,25 +170,35 @@ class SeqAttnMatch(nn.Module):
             matched_seq = batch * len1 * h
         """
         # Project vectors
-        if self.linear:
+        if self.attention_type == 'relu_FC':
             x_proj = self.linear(x.view(-1, x.size(2))).view(x.size())
             x_proj = F.relu(x_proj)
             y_proj = self.linear(y.view(-1, y.size(2))).view(y.size())
             y_proj = F.relu(y_proj)
-        else:
-            x_proj = x
-            y_proj = y
+            scores = x_proj.bmm(y_proj.transpose(2, 1))
+        elif self.attention_type == 'inner_prod':
+            scores = x.bmm(y.transpose(2, 1))
+        elif self.attention_type == 'trainable_inner_prod':
+            xy_prod = (x.unsqueeze(2) * y.unsqueeze(1)) # using broadcast
+            scores = self.linear(xy_prod.view(-1, x.size(2))).view(x.size(0), x.size(1), y.size(1))
+        elif self.attention_type == 'trainable_inner_prod_ext':
+            xy_prod = (x.unsqueeze(2) * y.unsqueeze(1)) # using broadcast
+            xy_expand = torch.cat((x.unsqueeze(2).expand_as(xy_prod), y.unsqueeze(1).expand_as(xy_prod), xy_prod), 3)
+            scores = self.linear(xy_expand.view(-1, 3 * x.size(2))).view(x.size(0), x.size(1), y.size(1))
 
-        # Compute scores
-        scores = x_proj.bmm(y_proj.transpose(2, 1))
+        # scores = batch * len1 * len2
 
         # Mask padding
         y_mask = y_mask.unsqueeze(1).expand(scores.size())
         scores.data.masked_fill_(y_mask.data, -float('inf'))
 
         # Normalize with softmax
-        alpha_flat = F.softmax(scores.view(-1, y.size(1)))
-        alpha = alpha_flat.view(-1, x.size(1), y.size(1))
+        if self.normalize == 'sumY':
+            alpha_flat = F.softmax(scores.view(-1, y.size(1)))
+            alpha = alpha_flat.view(-1, x.size(1), y.size(1))
+        if self.normalize == 'sumX':
+            alpha_flat = F.softmax(scores.transpose(1,2).contiguous().view(-1, x.size(1)))
+            alpha = alpha_flat.view(-1, y.size(1), x.size(1)).transpose(1,2)
 
         # Take weighted average
         matched_seq = alpha.bmm(y)

@@ -89,6 +89,38 @@ class RnnDocReader(nn.Module):
             doc_hidden_size *= opt['doc_layers']
             question_hidden_size *= opt['question_layers']
 
+        # Inter-alignment
+        assert(doc_hidden_size == question_hidden_size)
+
+        self.inter_align = SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+
+        int_ali_doc_hidden_size = doc_hidden_size
+        if opt['inter_att_concat'] == 'fuse':
+            int_ali_doc_hidden_size *= 1
+        elif opt['inter_att_concat'] == 'concat':
+            int_ali_doc_hidden_size *= 2
+        elif opt['inter_att_concat'] == 'concat&dot':
+            int_ali_doc_hidden_size *= 3
+        elif opt['inter_att_concat'] == 'concat&dot&diff':
+            int_ali_doc_hidden_size *= 4
+        else:
+            raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
+
+        # Gated layer
+        if opt['gated_int_att_input']:
+            self.gated_int_ali_input = layers.GatedLayer(input_size=int_ali_doc_hidden_size)
+
+        self.inter_align_rnn = layers.StackedBRNN(
+            input_size=int_ali_doc_hidden_size,
+            hidden_size=opt['hidden_size'],
+            num_layers=opt['doc_layers'],
+            dropout_rate=opt['dropout_rnn'],
+            dropout_output=opt['dropout_rnn_output'],
+            concat_layers=opt['concat_rnn_layers'],
+            rnn_type=self.RNN_TYPES[opt['rnn_type']],
+            padding=opt['rnn_padding'],
+        )
+
         # Question merging
         if opt['question_merge'] not in ['avg', 'self_attn']:
             raise NotImplementedError('question_merge = %s' % opt['question_merge'])
@@ -159,6 +191,17 @@ class RnnDocReader(nn.Module):
 
         # Encode question with RNN
         question_hiddens = self.question_rnn(x2_input, x2_mask)
+
+        # Inter-alignment
+        C2Q_hiddens = self.inter_align(doc_hiddens, question_hiddens, x2_mask)
+        if opt['inter_att_concat'] == 'fuse':
+            raise NotImplementedError('')
+        elif opt['inter_att_concat'] == 'concat':
+            doc_int_ali_hiddens = torch.cat((doc_hiddens, C2Q_hiddens), 2)
+        elif opt['inter_att_concat'] == 'concat&dot':
+            doc_int_ali_hiddens = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens), 2)
+        elif opt['inter_att_concat'] == 'concat&dot&diff':
+            doc_int_ali_hiddens = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens, doc_hiddens-C2Q_hiddens), 2)
 
         # Merge question hiddens for answer generation
         if self.opt['question_merge'] == 'avg':
