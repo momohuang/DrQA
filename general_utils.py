@@ -130,7 +130,7 @@ class BatchGen:
             random.shuffle(indices)
             data = [data[i] for i in indices]
 
-        # chunk into batches
+        # chunk into batches (if i + batch_size > data.size(0), it's fine)
         data = [data[i:i + batch_size] for i in range(0, len(data), batch_size)]
         self.data = data
 

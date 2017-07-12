@@ -227,6 +227,18 @@ class LinearSeqAttn(nn.Module):
         alpha = F.softmax(scores)
         return alpha
 
+class GatedLayer(nn.Module):
+    def __init__(self, input_size):
+        super(GatedLayer, self).__init__()
+        self.linear = nn.Linear(input_size, input_size)
+    def forward(self, x):
+        """
+        x = batch * len * hdim
+        """
+        x_flat = x.view(-1, x.size(-1))
+        g = F.sigmoid(self.linear(x_flat).view(x.size()))
+        return g * x
+
 
 # ------------------------------------------------------------------------------
 # Functional

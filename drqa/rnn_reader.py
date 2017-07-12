@@ -54,6 +54,10 @@ class RnnDocReader(nn.Module):
         if opt['ner']:
             doc_input_size += opt['ner_dim']
 
+        # Gated layer
+        if opt['gated_input']:
+            self.gated_input = layers.GatedLayer(input_size=doc_input_size)
+
         # RNN document encoder
         self.doc_rnn = layers.StackedBRNN(
             input_size=doc_input_size,
@@ -138,7 +142,10 @@ class RnnDocReader(nn.Module):
             x1_ner_emb = self.ner_embedding(x1_ner)
             drnn_input_list.append(x1_ner_emb)
 
-        x1_input = torch.cat(drnn_input_list, 2)
+        if self.opt['gated_input']:
+            x1_input = self.gated_input(torch.cat(drnn_input_list, 2))
+        else:
+            x1_input = torch.cat(drnn_input_list, 2)
         x2_input = x2_emb
 
         # Now the features are ready
