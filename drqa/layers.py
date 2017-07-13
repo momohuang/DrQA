@@ -48,7 +48,7 @@ class StackedBRNN(nn.Module):
 
     def _forward_unpadded(self, x, x_mask):
         """Faster encoding that ignores any padding."""
-        x = x.mask_fill(x_mask.unsqueeze(2).expand_as(x), 0)
+        x = x.masked_fill(x_mask.unsqueeze(2).expand_as(x), 0)
 
         # Transpose batch and sequence dims
         x = x.transpose(0, 1)
