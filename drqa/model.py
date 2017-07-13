@@ -40,6 +40,9 @@ class LEGOReaderModel(object):
         self.network = RnnDocReader(opt, embedding)
         if state_dict:
             new_state = set(self.network.state_dict().keys())
+            for k in list(state_dict['network'].keys()):
+                if k not in new_state:
+                    del state_dict['network'][k]
             self.network.load_state_dict(state_dict['network'])
 
         # Building optimizer.
@@ -55,18 +58,6 @@ class LEGOReaderModel(object):
             raise RuntimeError('Unsupported optimizer: %s' % opt['optimizer'])
         if state_dict:
             self.optimizer.load_state_dict(state_dict['optimizer'])
-
-    # allow the evaluation embedding be larger than training embedding
-    # this is helpful if we have pretrained word embeddings
-    def setup_eval_embed(self, eval_embed, padding_idx = 0):
-        # eval_embed should be a supermatrix of training embedding
-        self.network.eval_embed = nn.Embedding(eval_embed.size(0),
-                                               eval_embed.size(1),
-                                               padding_idx = padding_idx)
-        self.network.eval_embed.weight.data = eval_embed
-        for p in self.network.eval_embed.parameters():
-            p.volatile = True
-        self.eval_embed_transfer = True
 
     def update(self, ex):
         # Train mode
@@ -145,6 +136,18 @@ class LEGOReaderModel(object):
             predictions.append(text[i][s_offset:e_offset])
 
         return predictions # list of strings
+
+    # allow the evaluation embedding be larger than training embedding
+    # this is helpful if we have pretrained word embeddings
+    def setup_eval_embed(self, eval_embed, padding_idx = 0):
+        # eval_embed should be a supermatrix of training embedding
+        self.network.eval_embed = nn.Embedding(eval_embed.size(0),
+                                               eval_embed.size(1),
+                                               padding_idx = padding_idx)
+        self.network.eval_embed.weight.data = eval_embed
+        for p in self.network.eval_embed.parameters():
+            p.volatile = True
+        self.eval_embed_transfer = True
 
     def update_eval_embed(self):
         # update evaluation embedding to trained embedding

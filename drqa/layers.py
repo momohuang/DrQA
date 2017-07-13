@@ -46,8 +46,10 @@ class StackedBRNN(nn.Module):
         # We don't care.
         return self._forward_unpadded(x, x_mask)
 
-    def _forward_unpadded(self, x, x_mask): # x_mask not used
+    def _forward_unpadded(self, x, x_mask):
         """Faster encoding that ignores any padding."""
+        x = x.mask_fill(x_mask.unsqueeze(2).expand_as(x), 0)
+
         # Transpose batch and sequence dims
         x = x.transpose(0, 1)
 
@@ -207,9 +209,7 @@ class SeqAttnMatch(nn.Module):
 
 class BilinearSeqAttn(nn.Module):
     """A bilinear attention layer over a sequence X w.r.t y:
-    * o_i = softmax(x_i'Wy) for x_i in X.
-
-    Optionally don't normalize output weights.
+    * o_i = x_i'Wy for x_i in X.
     """
     def __init__(self, x_size, y_size, identity=False):
         super(BilinearSeqAttn, self).__init__()
@@ -247,6 +247,18 @@ class LinearSeqAttn(nn.Module):
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         alpha = F.softmax(scores)
         return alpha
+
+class ChoiceLayer(nn.Module):
+    def __init__(self, input_size):
+        super(ChoiceLayer, self).__init__()
+        self.linear = nn.Linear(2 * input_size, input_size)
+    def forward(self, x1, x2):
+        """
+        xi = batch * len * hdim
+        """
+        assert(x1.size() == x2.size())
+        g = F.sigmoid(self.linear(torch.cat((x1, x2), 2).view(-1, 2*x1.size(-1))).view(x1.size()))
+        return g * x1 + (1-g) * x2
 
 class GatedLayer(nn.Module):
     def __init__(self, input_size):

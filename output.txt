@@ -10,3 +10,5 @@ Improved tokenization run 2: dev EM: 69.10122989593188 F1: 78.56207404335898
 Random vector for unknown words run 1: dev EM: 69.05392620624409 F1: 78.11589025440102
 No word vector pre-alignment run 1: dev EM: 68.39167455061495 F1: 77.55068472418104
 Gated input for the first LSTM layer run 1: dev EM: 69.18637653736991 F1: 78.31315547097128
+Improved tokenization run 3: dev EM: 69.70671712393566 F1: 78.87747327559043
+C2Q attention relu_FC, concat run 1:

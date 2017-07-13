@@ -13,7 +13,7 @@ import torch
 import msgpack
 import pandas as pd
 from drqa.model import LEGOReaderModel
-from general_utils import score, BatchGen
+from general_utils import score, BatchGen, _exact_match
 
 parser = argparse.ArgumentParser(
     description='Predict using a Lego Reader model.'
@@ -27,6 +27,7 @@ parser.add_argument('--test_meta', default='SQuAD/test_meta.msgpack',
 parser.add_argument('--test_data', default='SQuAD/test_data.msgpack',
                     help='path to preprocessed testing data file.')
 parser.add_argument('-bs', '--batch_size', default=32)
+parser.add_argument('--show', type=int, default=20)
 parser.add_argument('--seed', type=int, default=1023,
                     help='random seed for data shuffling, dropout, etc.')
 parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available(),
@@ -60,11 +61,11 @@ def main():
     opt = checkpoint['config']
     opt['cuda'] = args.cuda
     opt['seed'] = args.seed
+    opt['do_inter_att'] = False
     state_dict = checkpoint['state_dict']
     log.info('[model loaded.]')
 
     test, test_embedding, test_answer = load_test_data(opt)
-    opt['vocab_size'] = test_embedding.size(0)
     model = LEGOReaderModel(opt, state_dict = state_dict)
     log.info('[Data loaded.]')
 
@@ -80,9 +81,17 @@ def main():
     em, f1 = score(predictions, test_answer)
     log.warning("Test EM: {} F1: {}".format(em, f1))
 
+    wrong_pred = []
     with open(args.output, 'w', encoding='utf8') as f:
-        for pred in predictions:
+        for i, pred in enumerate(predictions):
             f.write(pred+'\n')
+            if _exact_match(pred, test_answer[i]) == False:
+                wrong_pred.append((i, pred))
+    error_samples = random.sample(wrong_pred, args.show)
+    for (i, pred) in error_samples:
+        print('Context: ', test[i][-2])
+        print('Answers: ', test_answer[i])
+        print('Predictions: ', pred)
 
 def load_test_data(opt):
     with open(args.test_meta, 'rb') as f:
