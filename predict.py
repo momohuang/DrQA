@@ -27,7 +27,7 @@ parser.add_argument('--test_meta', default='SQuAD/test_meta.msgpack',
 parser.add_argument('--test_data', default='SQuAD/test_data.msgpack',
                     help='path to preprocessed testing data file.')
 parser.add_argument('-bs', '--batch_size', default=32)
-parser.add_argument('--show', type=int, default=20)
+parser.add_argument('--show', type=int, default=10)
 parser.add_argument('--seed', type=int, default=1023,
                     help='random seed for data shuffling, dropout, etc.')
 parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available(),
@@ -61,11 +61,11 @@ def main():
     opt = checkpoint['config']
     opt['cuda'] = args.cuda
     opt['seed'] = args.seed
-    opt['do_inter_att'] = False
+    opt['do_inter_att'] = True
     state_dict = checkpoint['state_dict']
     log.info('[model loaded.]')
 
-    test, test_embedding, test_answer = load_test_data(opt)
+    test, test_embedding, questions, test_answer = load_test_data(opt)
     model = LEGOReaderModel(opt, state_dict = state_dict)
     log.info('[Data loaded.]')
 
@@ -90,8 +90,10 @@ def main():
     error_samples = random.sample(wrong_pred, args.show)
     for (i, pred) in error_samples:
         print('Context: ', test[i][-2])
+        print('Question: ', questions[i], '\n')
         print('Answers: ', test_answer[i])
         print('Predictions: ', pred)
+        print('\n==================\n')
 
 def load_test_data(opt):
     with open(args.test_meta, 'rb') as f:
@@ -112,13 +114,13 @@ def load_test_data(opt):
         data['context_ents'],
         data['question_ids'],
         data_orig['context'].tolist(),
-        [eval(x) for x in span]
+        [eval(x) for x in span],
     ))
 
     assert len(test) == len(data_orig['answers'].tolist())
     test_answer = data_orig['answers'].tolist()
     test_answer = [eval(ans) for ans in test_answer] # ans is str, eval(ans) is list
-    return test, embedding, test_answer # test_answer may be a dummy variable
+    return test, embedding, data_orig['question'].tolist(), test_answer # test_answer may be a dummy variable
 
 if __name__ == '__main__':
     main()
