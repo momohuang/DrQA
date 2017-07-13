@@ -101,9 +101,9 @@ class RnnDocReader(nn.Module):
                 self.fusion = layers.ChoiceLayer(doc_hidden_size)
             elif opt['inter_att_concat'] == 'concat':
                 int_ali_doc_hidden_size *= 2
-            elif opt['inter_att_concat'] == 'concat&dot':
+            elif opt['inter_att_concat'] == 'concat_dot':
                 int_ali_doc_hidden_size *= 3
-            elif opt['inter_att_concat'] == 'concat&dot&diff':
+            elif opt['inter_att_concat'] == 'concat_dot_diff':
                 int_ali_doc_hidden_size *= 4
             else:
                 raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
@@ -201,9 +201,9 @@ class RnnDocReader(nn.Module):
                 doc_int_ali_input = self.fusion(doc_hiddens, C2Q_hiddens)
             elif self.opt['inter_att_concat'] == 'concat':
                 doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens), 2)
-            elif self.opt['inter_att_concat'] == 'concat&dot':
+            elif self.opt['inter_att_concat'] == 'concat_dot':
                 doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens), 2)
-            elif self.opt['inter_att_concat'] == 'concat&dot&diff':
+            elif self.opt['inter_att_concat'] == 'concat_dot_diff':
                 doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens, doc_hiddens-C2Q_hiddens), 2)
             doc_final_hiddens = self.inter_align_rnn(doc_int_ali_input, x1_mask)
         else:

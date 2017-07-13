@@ -2,8 +2,7 @@ Original run 1: dev EM: 68.61873226111636 F1: 77.89724470528145
 Original run 2: dev EM: 68.67549668874172 F1: 78.03895984986448
 no Exact match run 1: dev EM: 66.9441816461684 F1: 76.43481553600684
 tune all embedding run 1: dev EM: 68.40113528855251 F1: 77.82505881327128
-
------- below all use improved tokenization (handle dashes and [] etc.) ------
+>>> Below all use improved tokenization (handle dashes and [] etc.)
 
 Improved tokenization run 1: dev EM: 69.25260170293284 F1: 78.44314735464995
 Improved tokenization run 2: dev EM: 69.10122989593188 F1: 78.56207404335898
@@ -13,3 +12,12 @@ Gated input for the first LSTM layer run 1: dev EM: 69.18637653736991 F1: 78.313
 Improved tokenization run 3: dev EM: 69.70671712393566 F1: 78.87747327559043
 C2Q attention relu_FC, concat run 1: dev EM: 70.70955534531693 F1: 79.68814222485408
 Improved tokenization (better padding) run 1:
+
+------ Below are run on gcrgdw136 (in output_gcrgdw136.log) ------
+Improved tokenization run 4:
+
+------ Below are run on toronto-g1 GPU6 (in output_toronto-g1.log) ------
+C2Q attention relu_FC, concat&dot run 1:
+
+------ Below are run on toronto-g1 GPU5 (in output_toronto-g1_GPU5.log) ------
+Improved tokenization run 5:
