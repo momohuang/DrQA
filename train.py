@@ -45,8 +45,8 @@ parser.add_argument('--cuda', type=bool, default=torch.cuda.is_available(),
 parser.add_argument('-e', '--epoches', type=int, default=20)
 parser.add_argument('-bs', '--batch_size', type=int, default=32)
 parser.add_argument('-rs', '--resume', default='',
-                    help='previous model file name (in `model_dir`). '
-                         'e.g. "checkpoint_epoch_11.pt"')
+                    help='previous model pathname. '
+                         'e.g. "models/checkpoint_epoch_11.pt"')
 parser.add_argument('-ro', '--resume_options', action='store_true',
                     help='use previous model options, ignore the cli and defaults.')
 parser.add_argument('-rlr', '--reduce_lr', type=float, default=0.,
@@ -133,7 +133,7 @@ def main():
 
     if args.resume:
         log.info('[loading previous model...]')
-        checkpoint = torch.load(os.path.join(model_dir, args.resume))
+        checkpoint = torch.load(args.resume)
         if args.resume_options:
             opt = checkpoint['config']
         state_dict = checkpoint['state_dict']
