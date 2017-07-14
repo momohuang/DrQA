@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(
     description='Train a Lego Reader model.'
 )
 # system
+parser.add_argument('--name', default='', help='additional name of the current run')
 parser.add_argument('--log_file', default='output.log',
                     help='path for log file.')
 parser.add_argument('--log_per_updates', type=int, default=20,
@@ -94,6 +95,10 @@ parser.add_argument('--rnn_type', default='lstm',
                     help='supported types: rnn, gru, lstm')
 
 args = parser.parse_args()
+
+if args.name != '':
+    args.model_dir = 'models_' + args.name
+    args.log_file = 'output_' + args.name + '.log'
 
 # set model dir
 model_dir = args.model_dir
