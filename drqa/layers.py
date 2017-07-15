@@ -1,4 +1,4 @@
-# Copyright (c) 2017-present, Facebook, Inc.
+`# Copyright (c) 2017-present, Facebook, Inc.
 # All rights reserved.
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree. An additional grant
@@ -179,10 +179,10 @@ class SeqAttnMatch(nn.Module):
         elif self.attention_type == 'inner_prod':
             scores = x.bmm(y.transpose(2, 1))
         elif self.attention_type == 'trainable_inner_prod':
-            xy_prod = (x.unsqueeze(2) * y.unsqueeze(1)) # using broadcast
+            xy_prod = (x.unsqueeze(2).expand(x.size(0), x.size(1), y.size(1), x.size(2)) * y.unsqueeze(1).expand(x.size(0), x.size(1), y.size(1), x.size(2))) # using broadcast
             scores = self.linear(xy_prod.view(-1, x.size(2))).view(x.size(0), x.size(1), y.size(1))
         elif self.attention_type == 'trainable_inner_prod_ext':
-            xy_prod = (x.unsqueeze(2) * y.unsqueeze(1)) # using broadcast
+            xy_prod = (x.unsqueeze(2).expand(x.size(0), x.size(1), y.size(1), x.size(2)) * y.unsqueeze(1).expand(x.size(0), x.size(1), y.size(1), x.size(2))) # using broadcast
             xy_expand = torch.cat((x.unsqueeze(2).expand_as(xy_prod), y.unsqueeze(1).expand_as(xy_prod), xy_prod), 3)
             scores = self.linear(xy_expand.view(-1, 3 * x.size(2))).view(x.size(0), x.size(1), y.size(1))
 
@@ -293,3 +293,4 @@ def weighted_avg(x, weights): # used in rnn_reader.py
         weights = batch * len
     """
     return weights.unsqueeze(1).bmm(x).squeeze(1)
+`
