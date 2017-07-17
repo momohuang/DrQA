@@ -9,6 +9,7 @@ import argparse
 import collections
 import multiprocessing
 import logging
+import random
 from general_utils import flatten_json, normalize_text, build_embedding, load_glove_vocab, pre_proc, get_context_span, feature_gen, token2id
 
 parser = argparse.ArgumentParser(
@@ -25,6 +26,9 @@ parser.add_argument('--threads', type=int, default=multiprocessing.cpu_count(),
                     help='number of threads for preprocessing.')
 parser.add_argument('--no_match', action='store_true',
                     help='do not extract the three exact matching features.')
+parser.add_argument('--seed', type=int, default=1023,
+                    help='random seed for data shuffling, embedding init, etc.')
+
 
 args = parser.parse_args()
 trn_file = 'SQuAD/train-v1.1.json'
@@ -32,6 +36,9 @@ dev_file = 'SQuAD/dev-v1.1.json'
 wv_file = args.wv_file
 wv_dim = args.wv_dim
 nlp = spacy.load('en', parser=False)
+
+random.seed(args.seed)
+np.random.seed(args.seed)
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG,
                     datefmt='%m/%d/%Y %I:%M:%S')

@@ -11,6 +11,7 @@ from collections import Counter
 import torch
 import msgpack
 import pandas as pd
+import numpy as np
 from drqa.model import LEGOReaderModel
 from general_utils import score, BatchGen
 
@@ -116,9 +117,10 @@ model_dir = os.path.abspath(model_dir)
 
 # set random seed
 random.seed(args.seed)
+np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if args.cuda:
-    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
 # setup logger
 log = logging.getLogger(__name__)
