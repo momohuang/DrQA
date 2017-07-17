@@ -88,17 +88,14 @@ class RnnDocReader(nn.Module):
 
         # Inter-alignment
         if opt['do_C2Q']:
-            if opt['do_multi-att']:
-                if opt['multi-att_do_relu']:
-                    self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi-att_key'], opt['multi-att_val'], opt['multi-att_h'], do_relu = True)
-                else:
-                    self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi-att_key'], opt['multi-att_val'], opt['multi-att_h'], do_relu = False)
+            if opt['do_multi_att']:
+                self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'])
 
                 # currently always do concat, because the size may differ
                 if opt['inter_att_concat'] != 'concat':
                     print('\"inter_att_concat\" option only supports [concat] (changed to [concat])')
                     opt['inter_att_concat'] = 'concat'
-                int_ali_doc_hidden_size = doc_hidden_size + opt['multi-att_h'] * opt['multi-att_val']
+                int_ali_doc_hidden_size = doc_hidden_size + opt['multi_att_h'] * opt['multi_att_val']
             else:
                 assert(doc_hidden_size == question_hidden_size)
                 self.inter_align = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
