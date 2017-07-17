@@ -103,7 +103,7 @@ def load_test_data(opt):
 
     with open(args.test_data, 'rb') as f:
         data = msgpack.load(f, encoding='utf8')
-    data_orig = pd.read_csv('SQuAD/test.csv')
+    data_orig = pd.read_csv('SQuAD/test.csv', encoding='utf8')
 
     assert opt['num_features'] == len(data['context_features'][0][0])
     span = data_orig['context_span'].tolist()
