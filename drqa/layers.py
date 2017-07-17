@@ -173,7 +173,7 @@ class MultiAttnMatch(nn.Module):
             keys.transpose(1,2).transpose(2,3).contiguous().view(-1, self.d_key, y.size(1)))
 
         scores = scores.view(x.size(0), -1, y.size(1))
-        scores = scores / (d_key ** 0.5)
+        scores = scores / (self.d_key ** 0.5)
         # scores: batch * (h*len1) * len2 (note the order of h, len1)
 
         y_mask = y_mask.unsqueeze(1).expand_as(scores)
@@ -188,7 +188,7 @@ class MultiAttnMatch(nn.Module):
             values = F.relu(values)
         # values: (batch*h) * len2 * d_val
 
-        matched_seq = torch.bmm(alpha, values).view(x.size(0), self.h, x.size(1), self.d_val).tranpose(1,2)
+        matched_seq = torch.bmm(alpha, values).view(x.size(0), self.h, x.size(1), self.d_val).transpose(1,2)
         # matched_seq: batch * len1 * h * d_val
 
         return matched_seq.contiguous().view(x.size(0), x.size(1), self.h * self.d_val)
