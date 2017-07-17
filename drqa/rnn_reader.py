@@ -17,9 +17,6 @@ class RnnDocReader(nn.Module):
 
     def __init__(self, opt, embedding=None, padding_idx=0):
         super(RnnDocReader, self).__init__()
-        # Store config
-        self.opt = opt
-
         # Word embeddings
         self.embedding = nn.Embedding(opt['vocab_size'],
                                       opt['embedding_dim'],
@@ -90,23 +87,36 @@ class RnnDocReader(nn.Module):
             question_hidden_size *= opt['question_layers']
 
         # Inter-alignment
-        if opt['do_inter_att']:
-            assert(doc_hidden_size == question_hidden_size)
+        if opt['do_C2Q']:
+            if opt['do_multi-att']:
+                if opt['multi-att_do_relu']:
+                    self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi-att_key'], opt['multi-att_val'], opt['multi-att_h'], do_relu = True)
+                else:
+                    self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi-att_key'], opt['multi-att_val'], opt['multi-att_h'], do_relu = False)
 
-            self.inter_align = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
-
-            int_ali_doc_hidden_size = doc_hidden_size
-            if opt['inter_att_concat'] == 'fuse':
-                int_ali_doc_hidden_size *= 1
-                self.fusion = layers.ChoiceLayer(doc_hidden_size)
-            elif opt['inter_att_concat'] == 'concat':
-                int_ali_doc_hidden_size *= 2
-            elif opt['inter_att_concat'] == 'concat_dot':
-                int_ali_doc_hidden_size *= 3
-            elif opt['inter_att_concat'] == 'concat_dot_diff':
-                int_ali_doc_hidden_size *= 4
+                # currently always do concat, because the size may differ
+                if opt['inter_att_concat'] != 'concat':
+                    print('\"inter_att_concat\" option only supports [concat] (changed to [concat])')
+                    opt['inter_att_concat'] = 'concat'
+                int_ali_doc_hidden_size = doc_hidden_size + opt['multi-att_h'] * opt['multi-att_val']
             else:
-                raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
+                assert(doc_hidden_size == question_hidden_size)
+                self.inter_align = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+
+                int_ali_doc_hidden_size = doc_hidden_size
+                if opt['inter_att_concat'] == 'fuse':
+                    int_ali_doc_hidden_size *= 1
+                    self.fusion = layers.ChoiceLayer(doc_hidden_size)
+                elif opt['inter_att_concat'] == 'concat':
+                    int_ali_doc_hidden_size *= 2
+                elif opt['inter_att_concat'] == 'concat_dot':
+                    int_ali_doc_hidden_size *= 3
+                elif opt['inter_att_concat'] == 'concat_dot_diff':
+                    int_ali_doc_hidden_size *= 4
+                else:
+                    raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
+
+            print('Final level doc vector size = ', int_ali_doc_hidden_size)
 
             # Gated layer
             if opt['gated_int_att_input']:
@@ -138,6 +148,9 @@ class RnnDocReader(nn.Module):
             doc_hidden_size,
             question_hidden_size,
         )
+
+        # Store config
+        self.opt = opt
 
     def forward(self, x1, x1_f, x1_pos, x1_ner, x1_mask, x2, x2_mask):
         """Inputs:
@@ -195,7 +208,7 @@ class RnnDocReader(nn.Module):
         question_hiddens = self.question_rnn(x2_input, x2_mask)
 
         # Inter-alignment
-        if self.opt['do_inter_att']:
+        if self.opt['do_C2Q']:
             C2Q_hiddens = self.inter_align(doc_hiddens, question_hiddens, x2_mask)
             if self.opt['inter_att_concat'] == 'fuse':
                 doc_int_ali_input = self.fusion(doc_hiddens, C2Q_hiddens)

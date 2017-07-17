@@ -81,11 +81,20 @@ parser.add_argument('--ner_size', type=int, default=19,
 parser.add_argument('--ner_dim', type=int, default=8,
                     help='the embedding dimension for named entity tags.')
 parser.add_argument('--no_wvec_align', dest='wvec_align', action='store_false')
+
 parser.add_argument('--gated_input', dest='gated_input', action='store_true')
 parser.add_argument('--gated_int_att_input', action='store_true')
-parser.add_argument('--do_inter_att', action='store_true')
+
+parser.add_argument('--do_C2Q', action='store_true')
 parser.add_argument('--inter_att_type', default='relu_FC')
 parser.add_argument('--inter_att_concat', default='concat')
+
+parser.add_argument('--do_multi-att', action='store_true')
+parser.add_argument('--multi-att_do_relu', action='store_true')
+parser.add_argument('--multi-att_key', type=int, default=128)
+parser.add_argument('--multi-att_val', type=int, default=128)
+parser.add_argument('--multi-att_h', type=int, default=6)
+
 parser.add_argument('--concat_rnn_layers', type=bool, default=True)
 parser.add_argument('--dropout_emb', type=float, default=0.3)
 parser.add_argument('--dropout_rnn', type=float, default=0.3)

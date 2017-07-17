@@ -3,10 +3,12 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree. An additional grant
 # of patent rights can be found in the PATENTS file in the same directory.
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.nn.parameter import Parameter
 
 # No modification is made to this file.
 # Origin: https://github.com/facebookresearch/ParlAI/tree/master/parlai/agents/drqa
@@ -56,7 +58,7 @@ class StackedBRNN(nn.Module):
         for i in range(self.num_layers):
             rnn_input = outputs[-1]
 
-            # Apply dropout to hidden input
+            # Apply dropout to input
             if self.dropout_rate > 0:
                 rnn_input = F.dropout(rnn_input,
                                       p=self.dropout_rate,
@@ -138,8 +140,63 @@ class StackedBRNN(nn.Module):
         return output
 
 
+class MultiAttnMatch(nn.Module):
+    """
+    Given sequences X and Y, match sequence Y to each element in X through multi-attention
+    """
+    def __init__(self, d_in, d_key, d_val, h, do_relu = False):
+        super(MultiAttnMatch, self).__init__()
+        self.to_query =  nn.Linear(d_in, h * d_key)
+        self.to_key = nn.Linear(d_in, h * d_key)
+        self.to_value = nn.Linear(d_in, h * d_val)
+        self.h = h
+        self.d_key = d_key
+        self.d_val = d_val
+        self.do_relu = do_relu
+
+    def forward(self, x, y, y_mask):
+        """
+        Input shapes:
+            x = batch * len1 * d_in
+            y = batch * len2 * d_in
+            y_mask = batch * len2
+        Output shapes:
+            matched_seq = batch * len1 * (h*d_val)
+        """
+        queries = self.to_query(x.view(-1, x.size(2))).view(x.size(0), x.size(1), self.h, self.d_key)
+        if self.do_relu:
+            queries = F.relu(queries)
+        keys = self.to_key(y.view(-1, y.size(2))).view(x.size(0), y.size(1), self.h, self.d_key)
+        if self.do_relu:
+            keys = F.relu(keys)
+        scores = torch.bmm(queries.transpose(1,2).contiguous().view(-1, x.size(1), self.d_key),
+            keys.transpose(1,2).transpose(2,3).contiguous().view(-1, self.d_key, y.size(1)))
+
+        scores = scores.view(x.size(0), -1, y.size(1))
+        scores = scores / (d_key ** 0.5)
+        # scores: batch * (h*len1) * len2 (note the order of h, len1)
+
+        y_mask = y_mask.unsqueeze(1).expand_as(scores)
+        scores.data.masked_fill_(y_mask.data, -float('inf'))
+
+        alpha = F.softmax(scores.view(-1, y.size(1))).view(-1, x.size(1), y.size(1))
+        # alpha: (batch*h) * len1 * len2
+
+        values = self.to_value(y.view(-1, y.size(2))).view(x.size(0), y.size(1), self.h, self.d_val)
+        values = values.transpose(1,2).contiguous().view(-1, y.size(1), self.d_val)
+        if self.do_relu:
+            values = F.relu(values)
+        # values: (batch*h) * len2 * d_val
+
+        matched_seq = torch.bmm(alpha, values).view(x.size(0), self.h, x.size(1), self.d_val).tranpose(1,2)
+        # matched_seq: batch * len1 * h * d_val
+
+        return matched_seq.contiguous().view(x.size(0), x.size(1), self.h * self.d_val)
+
+
 class SeqAttnMatch(nn.Module):
-    """Given sequences X and Y, match sequence Y to each element in X.
+    """
+    Given sequences X and Y, match sequence Y to each element in X.
     * o_i = sum(alpha_ij * y_j) for i in X
     * alpha_ij = softmax(proj(y_j) * proj(x_i))
     """
@@ -150,12 +207,23 @@ class SeqAttnMatch(nn.Module):
         elif attention_type == 'inner_prod':
             self.linear = None
         elif attention_type == 'trainable_inner_prod':
-            self.linear = nn.Linear(input_size, 1)
+            self.weight = Parameter(torch.Tensor(input_size))
+            stdv = 1. / math.sqrt(input_size)
+            self.weight.data.uniform_(-stdv, stdv)
         elif attention_type == 'trainable_inner_prod_ext':
-            self.linear = nn.Linear(3 * input_size, 1)
+            self.weight = Parameter(torch.Tensor(input_size))
+            stdv = 1. / math.sqrt(input_size)
+            self.weight.data.uniform_(-stdv, stdv)
+            self.ulinear = nn.Linear(input_size, 1, bias = False)
+            self.vlinear = nn.Linear(input_size, 1, bias = False)
+        elif attention_type == 'MLP':
+            self.ulinear = nn.Linear(input_size, input_size)
+            self.vlinear = nn.Linear(input_size, input_size, bias = False)
+            self.tlinear = nn.Linear(input_size, 1, bias = False)
         else:
             raise NotImplementedError('attention_type = %s' % attention_type)
         self.attention_type = attention_type
+        self.input_size = input_size
 
         if normalize != 'sumX' and normalize != 'sumY':
             raise NotImplementedError('normalize = %s' % normalize)
@@ -179,12 +247,18 @@ class SeqAttnMatch(nn.Module):
         elif self.attention_type == 'inner_prod':
             scores = x.bmm(y.transpose(2, 1))
         elif self.attention_type == 'trainable_inner_prod':
-            xy_prod = (x.unsqueeze(2).expand(x.size(0), x.size(1), y.size(1), x.size(2)) * y.unsqueeze(1).expand(x.size(0), x.size(1), y.size(1), x.size(2))) # using broadcast
-            scores = self.linear(xy_prod.view(-1, x.size(2))).view(x.size(0), x.size(1), y.size(1))
+            y_weight = y * self.weight.unsqueeze(0).unsqueeze(1).expand_as(y)
+            scores = x.bmm(y_weight.transpose(2, 1))
         elif self.attention_type == 'trainable_inner_prod_ext':
-            xy_prod = (x.unsqueeze(2).expand(x.size(0), x.size(1), y.size(1), x.size(2)) * y.unsqueeze(1).expand(x.size(0), x.size(1), y.size(1), x.size(2))) # using broadcast
-            xy_expand = torch.cat((x.unsqueeze(2).expand_as(xy_prod), y.unsqueeze(1).expand_as(xy_prod), xy_prod), 3)
-            scores = self.linear(xy_expand.view(-1, 3 * x.size(2))).view(x.size(0), x.size(1), y.size(1))
+            y_weight = y * self.weight.unsqueeze(0).unsqueeze(1).expand_as(y)
+            scores = x.bmm(y_weight.transpose(2, 1))
+            x_bias = self.ulinear(x.view(-1, x.size(2))).view(x.size(0), x.size(1), 1).expand_as(scores)
+            y_bias = self.vlinear(y.view(-1, y.size(2))).view(y.size(0), 1, y.size(1)).expand_as(scores)
+            scores = scores + x_bias + y_bias
+        elif self.attention_type == 'MLP':
+            x_proj = self.ulinear(x.view(-1, x.size(2))).view(x.size()).unsqueeze(2).expand(x.size(0), x.size(1), y.size(1), x.size(2))
+            y_proj = self.vlinear(y.view(-1, y.size(2))).view(y.size()).unsqueeze(1).expand(x.size(0), x.size(1), y.size(1), x.size(2))
+            scores = self.tlinear(F.tanh(x_proj + y_proj).view(-1, x.size(2))).view(x.size(0), x.size(1), y.size(1))
 
         # scores = batch * len1 * len2
 

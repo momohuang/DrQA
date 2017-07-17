@@ -61,7 +61,7 @@ def main():
     opt = checkpoint['config']
     opt['cuda'] = args.cuda
     opt['seed'] = args.seed
-    opt['do_inter_att'] = True
+    opt['do_C2Q'] = True
     state_dict = checkpoint['state_dict']
     log.info('[model loaded.]')
 
