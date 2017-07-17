@@ -12,6 +12,7 @@ from collections import Counter
 import torch
 import msgpack
 import pandas as pd
+import numpy as np
 from drqa.model import LEGOReaderModel
 from general_utils import score, BatchGen, _exact_match
 
@@ -43,9 +44,10 @@ if args.model[-3:] != '.pt':
 args.output = 'pred-' + basename(args.model)[:-3] + '.txt'
 
 random.seed(args.seed)
+np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if args.cuda:
-    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
