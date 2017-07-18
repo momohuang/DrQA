@@ -34,8 +34,8 @@ parser.add_argument('--dev_data', default='SQuAD/dev_data.msgpack',
                     help='path to preprocessed validation data file.')
 parser.add_argument('--model_dir', default='models',
                     help='path to store saved models.')
-parser.add_argument('--save_last_only', action='store_true',
-                    help='only save the final models.')
+parser.add_argument('--save_best_only', action='store_true',
+                    help='only save the best model.')
 parser.add_argument('--eval_per_epoch', type=int, default=1,
                     help='perform evaluation per x epoches.')
 parser.add_argument('--seed', type=int, default=1023,
@@ -197,7 +197,13 @@ def main():
             em, f1 = score(predictions, dev_answer)
             log.warning("Epoch {} - dev EM: {} F1: {}".format(epoch, em, f1))
         # save
-        if not args.save_last_only or epoch == epoch_0 + args.epoches - 1:
+        if args.save_best_only:
+            if f1 > best_val_score:
+                best_val_score = f1
+                model_file = os.path.join(model_dir, 'best_model.pt')
+                model.save(model_file, epoch)
+                log.info('[new best model saved.]')
+        else:
             model_file = os.path.join(model_dir, 'checkpoint_epoch_{}.pt'.format(epoch))
             model.save(model_file, epoch)
             if f1 > best_val_score:
