@@ -1,30 +1,52 @@
-Original run 1: dev EM: 68.61873226111636 F1: 77.89724470528145
-Original run 2: dev EM: 68.67549668874172 F1: 78.03895984986448
-no Exact match run 1: dev EM: 66.9441816461684 F1: 76.43481553600684
-tune all embedding run 1: dev EM: 68.40113528855251 F1: 77.82505881327128
+Original : dev EM: 68.61873226111636 F1: 77.89724470528145
+Original : dev EM: 68.67549668874172 F1: 78.03895984986448
+no Exact match : dev EM: 66.9441816461684 F1: 76.43481553600684
+tune all embedding : dev EM: 68.40113528855251 F1: 77.82505881327128
 >>> Below all use improved tokenization (handle dashes and [] etc.)
 
 ------ Below are run on my original machine (in output.log) ------
-Improved tokenization run 1: dev EM: 69.25260170293284 F1: 78.44314735464995
-Improved tokenization run 2: dev EM: 69.10122989593188 F1: 78.56207404335898
-Random vector for unknown words run 1: dev EM: 69.05392620624409 F1: 78.11589025440102
-No word vector pre-alignment run 1: dev EM: 68.39167455061495 F1: 77.55068472418104
-Gated input for the first LSTM layer run 1: dev EM: 69.18637653736991 F1: 78.31315547097128
-Improved tokenization run 3: dev EM: 69.70671712393566 F1: 78.87747327559043
-C2Q attention relu_FC, concat run 1: dev EM: 70.70955534531693 F1: 79.68814222485408
-Improved tokenization (skip padding in BiLSTM) run 1: dev EM: 69.18637653736991 F1: 78.70554863209655
-C2Q attention multi-attention (h=6, dk=128, dv=128), concat run 1:
+Improved tokenization : dev EM: 69.25260170293284 F1: 78.44314735464995
+Improved tokenization : dev EM: 69.10122989593188 F1: 78.56207404335898
+Random vector for unknown words : dev EM: 69.05392620624409 F1: 78.11589025440102
+No word vector pre-alignment : dev EM: 68.39167455061495 F1: 77.55068472418104
+Gated input for the first LSTM layer : dev EM: 69.18637653736991 F1: 78.31315547097128
+Improved tokenization : dev EM: 69.70671712393566 F1: 78.87747327559043
+C2Q attention relu_FC, concat : dev EM: 70.70955534531693 F1: 79.68814222485408
+Improved tokenization (skip padding in BiLSTM) : dev EM: 69.18637653736991 F1: 78.70554863209655
+C2Q attention multi-attention (h=6, dk=128, dv=128), concat : dev EM: 70.82308420056765 F1: 79.63221044112676
+C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : dev EM: 70.55818353831599 F1: 79.2843292181444
+C2Q attention multi-attention (h=6, dk=128, dv=128, p=0.2), concat : TODO
 
 ------ Below are run on gcrgdw136 (in output_gcrgdw136.log) ------
-Improved tokenization (mask input in _forward_unpadded RNN) run 4: dev EM: 68.97824030274361 F1: 78.22092455491139
-C2Q attention trainable_inner_prod_ext, concat run 1:
+Improved tokenization (mask input in _forward_unpadded RNN) : dev EM: 68.97824030274361 F1: 78.22092455491139
+C2Q attention trainable_inner_prod_ext, concat : dev EM: 69.75402081362347 F1: 78.86182050000271
+C2Q attention relu_FC, concat : TODO
+
+------ Below are run on toronto-g1 GPU0 (in output_g1_gpu0.log) ------
+C2Q attention trainable_inner_prod_ext, concat_dot_diff : dev EM: 70.19867549668874 F1: 79.08327992606868
 
 ------ Below are run on toronto-g1 GPU2 (in output_g1_gpu2.log) ------
-C2Q attention relu_FC, concat_dot_diff run 1: dev EM: 70.1135288552507 F1: 79.34874889337425
+C2Q attention relu_FC, concat_dot_diff : dev EM: 70.1135288552507 F1: 79.34874889337425
 
 ------ Below are run on toronto-g1 GPU3 (in output_g1_gpu3.log) ------
-C2Q attention relu_FC, concat_dot run 1:  dev EM: 70.28382213812678 F1: 79.06876230820468
+C2Q attention relu_FC, concat_dot : dev EM: 70.28382213812678 F1: 79.06876230820468
+C2Q attention trainable_inner_prod_ext, concat_dot : dev EM: 70.18921475875118 F1: 79.03401814647371
+
+------ Below are run on toronto-g1 GPU5 (in output_g1_gpu5.log) ------
+C2Q attention relu_FC, concat : TODO
+
+=====================================================================
+Result for g2 may be quite different, because it is not using exactly the same preprocessed data
+X: unreliable results due to different encoding between Windows and Linux
+=====================================================================
+
+------ Below are run on toronto-g2 GPU4 (in output_g2_gpu4.log) ------
+C2Q attention multi-attention (h=6, dk=128, dv=128), concat : dev EM: 69.6972563859981 F1: 78.89387943494151 X
+C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : dev EM: 70.18921475875118 F1: 79.08214019489245 X
+C2Q attention multi-attention (h=6, dk=128, dv=128), concat : dev EM: 70.69063386944181 F1: 79.56901742835518
+C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : TODO
 
 ------ Below are run on toronto-g2 GPU5 (in output_g2_gpu5.log) ------
-C2Q attention relu_FC, fuse run 1: dev EM: 69.98107852412488 F1: 79.0443305460776
-C2Q attention relu_FC, concat run 2:
+C2Q attention relu_FC, fuse : dev EM: 69.98107852412488 F1: 79.0443305460776 X
+C2Q attention relu_FC, concat : dev EM: 69.91485335856197 F1: 79.25153281573044 X
+C2Q attention relu_FC, concat : TODO

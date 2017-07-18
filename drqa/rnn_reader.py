@@ -87,20 +87,21 @@ class RnnDocReader(nn.Module):
             question_hidden_size *= opt['question_layers']
 
         # Inter-alignment
+        int_ali_doc_hidden_size = doc_hidden_size
+
         if opt['do_C2Q']:
+            assert(doc_hidden_size == question_hidden_size)
             if opt['do_multi_att']:
-                self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'])
+                self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
 
                 # currently always do concat, because the size may differ
                 if opt['inter_att_concat'] != 'concat':
                     print('\"inter_att_concat\" option only supports [concat] (changed to [concat])')
                     opt['inter_att_concat'] = 'concat'
-                int_ali_doc_hidden_size = doc_hidden_size + opt['multi_att_h'] * opt['multi_att_val']
+                int_ali_doc_hidden_size += opt['multi_att_h'] * opt['multi_att_val']
             else:
-                assert(doc_hidden_size == question_hidden_size)
                 self.inter_align = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
 
-                int_ali_doc_hidden_size = doc_hidden_size
                 if opt['inter_att_concat'] == 'fuse':
                     int_ali_doc_hidden_size *= 1
                     self.fusion = layers.ChoiceLayer(doc_hidden_size)
@@ -113,7 +114,20 @@ class RnnDocReader(nn.Module):
                 else:
                     raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
 
-            print('Final level doc vector size = ', int_ali_doc_hidden_size)
+        if opt['do_coattention']:
+            assert(doc_hidden_size == question_hidden_size)
+            assert(doc_hidden_size == opt['multi_att_h'] * opt['multi_att_val'])
+
+            int_ali_doc_hidden_size += doc_hidden_size
+            if opt['do_multi_att']:
+                self.context4query = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
+                self.coattention = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
+            else:
+                self.context4query = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+                self.coattention = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+
+        if opt['do_C2Q'] or opt['do_coattention']:
+            print('Inter-aligned doc vector size = ', int_ali_doc_hidden_size)
 
             # Gated layer
             if opt['gated_int_att_input']:
@@ -215,6 +229,13 @@ class RnnDocReader(nn.Module):
                 doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens), 2)
             elif self.opt['inter_att_concat'] == 'concat_dot_diff':
                 doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens, doc_hiddens-C2Q_hiddens), 2)
+
+        if self.opt['do_coattention']:
+            C4Q_hiddens = self.context4query(question_hiddens, doc_hiddens, x1_mask)
+            coatt_hiddens = self.coattention(doc_hiddens, C4Q_hiddens, x2_mask)
+            doc_int_ali_input = torch.cat((doc_int_ali_input, coatt_hiddens), 2)
+
+        if self.opt['do_C2Q'] or self.opt['do_coattention']:
             doc_final_hiddens = self.inter_align_rnn(doc_int_ali_input, x1_mask)
         else:
             doc_final_hiddens = doc_hiddens

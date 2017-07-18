@@ -144,7 +144,7 @@ class MultiAttnMatch(nn.Module):
     """
     Given sequences X and Y, match sequence Y to each element in X through multi-attention
     """
-    def __init__(self, d_in, d_key, d_val, h, do_relu = False):
+    def __init__(self, d_in, d_key, d_val, h, do_relu = False, att_dropout_p = 0):
         super(MultiAttnMatch, self).__init__()
         self.to_query =  nn.Linear(d_in, h * d_key)
         self.to_key = nn.Linear(d_in, h * d_key)
@@ -153,6 +153,7 @@ class MultiAttnMatch(nn.Module):
         self.d_key = d_key
         self.d_val = d_val
         self.do_relu = do_relu
+        self.att_dropout_p = att_dropout_p
 
     def forward(self, x, y, y_mask):
         """
@@ -181,6 +182,9 @@ class MultiAttnMatch(nn.Module):
 
         alpha = F.softmax(scores.view(-1, y.size(1))).view(-1, x.size(1), y.size(1))
         # alpha: (batch*h) * len1 * len2
+
+        if self.att_dropout_p > 0:
+            alpha = F.dropout(alpha, p=self.att_dropout_p, training=self.training)
 
         values = self.to_value(y.view(-1, y.size(2))).view(x.size(0), y.size(1), self.h, self.d_val)
         values = values.transpose(1,2).contiguous().view(-1, y.size(1), self.d_val)

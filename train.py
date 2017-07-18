@@ -87,6 +87,8 @@ parser.add_argument('--gated_input', dest='gated_input', action='store_true')
 parser.add_argument('--gated_int_att_input', action='store_true')
 
 parser.add_argument('--do_C2Q', action='store_true')
+parser.add_argument('--do_coattention', action='store_true')
+
 parser.add_argument('--inter_att_type', default='relu_FC')
 parser.add_argument('--inter_att_concat', default='concat')
 
@@ -95,6 +97,7 @@ parser.add_argument('--multi_att_do_relu', action='store_true')
 parser.add_argument('--multi_att_key', type=int, default=128)
 parser.add_argument('--multi_att_val', type=int, default=128)
 parser.add_argument('--multi_att_h', type=int, default=6)
+parser.add_argument('--multi_att_dropout', type=float, default=0)
 
 parser.add_argument('--concat_rnn_layers', type=bool, default=True)
 parser.add_argument('--dropout_emb', type=float, default=0.3)
@@ -107,8 +110,8 @@ parser.add_argument('--rnn_type', default='lstm',
 args = parser.parse_args()
 
 if args.name != '':
-    args.model_dir = 'models_' + args.name
-    args.log_file = 'output_' + args.name + '.log'
+    args.model_dir = args.model_dir + '_' + args.name
+    args.log_file = os.path.dirname(args.log_file) + 'output_' + args.name + '.log'
 
 # set model dir
 model_dir = args.model_dir
