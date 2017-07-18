@@ -88,6 +88,7 @@ class RnnDocReader(nn.Module):
 
         # Inter-alignment
         int_ali_doc_hidden_size = doc_hidden_size
+        int_ali_question_hidden_size = question_hidden_size
 
         if opt['do_C2Q']:
             assert(doc_hidden_size == question_hidden_size)
@@ -114,6 +115,13 @@ class RnnDocReader(nn.Module):
                 else:
                     raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
 
+        if opt['do_my_Q2C']:
+            int_ali_question_hidden_size += doc_hidden_size
+            if opt['do_multi_att']:
+                self.my_Q2C = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
+            else:
+                self.my_Q2C = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+
         if opt['do_coattention']:
             assert(doc_hidden_size == question_hidden_size)
             assert(doc_hidden_size == opt['multi_att_h'] * opt['multi_att_val'])
@@ -130,13 +138,31 @@ class RnnDocReader(nn.Module):
             print('Inter-aligned doc vector size = ', int_ali_doc_hidden_size)
 
             # Gated layer
-            if opt['gated_int_att_input']:
-                self.gated_int_ali_input = layers.GatedLayer(input_size=int_ali_doc_hidden_size)
+            if opt['gated_int_ali_doc']:
+                self.int_ali_doc_gate = layers.GatedLayer(input_size=int_ali_doc_hidden_size)
 
             self.inter_align_rnn = layers.StackedBRNN(
                 input_size=int_ali_doc_hidden_size,
                 hidden_size=opt['hidden_size'],
                 num_layers=opt['doc_layers'],
+                dropout_rate=opt['dropout_rnn'],
+                dropout_output=opt['dropout_rnn_output'],
+                concat_layers=opt['concat_rnn_layers'],
+                rnn_type=self.RNN_TYPES[opt['rnn_type']],
+                padding=opt['rnn_padding'],
+            )
+
+        if opt['do_my_Q2C']:
+            print('Inter-aligned question vector size = ', int_ali_question_hidden_size)
+
+            # Gated layer
+            if opt['gated_int_ali_question']:
+                self.int_ali_question_gate = layers.GatedLayer(input_size=int_ali_question_hidden_size)
+
+            self.inter_align_question_rnn = layers.StackedBRNN(
+                input_size=int_ali_question_hidden_size,
+                hidden_size=opt['hidden_size'],
+                num_layers=opt['question_layers'],
                 dropout_rate=opt['dropout_rnn'],
                 dropout_output=opt['dropout_rnn_output'],
                 concat_layers=opt['concat_rnn_layers'],
@@ -235,17 +261,30 @@ class RnnDocReader(nn.Module):
             coatt_hiddens = self.coattention(doc_hiddens, C4Q_hiddens, x2_mask)
             doc_int_ali_input = torch.cat((doc_int_ali_input, coatt_hiddens), 2)
 
+        if self.opt['do_my_Q2C']:
+            my_Q2C_hiddens = self.my_Q2C(question_hiddens, doc_hiddens, x1_mask)
+            question_int_ali_input = torch.cat((question_hiddens, my_Q2C_hiddens), 2)
+
         if self.opt['do_C2Q'] or self.opt['do_coattention']:
+            if self.opt['gated_int_ali_doc']:
+                doc_int_ali_input = self.int_ali_doc_gate(doc_int_ali_input)
             doc_final_hiddens = self.inter_align_rnn(doc_int_ali_input, x1_mask)
         else:
             doc_final_hiddens = doc_hiddens
 
+        if self.opt['do_my_Q2C']:
+            if self.opt['gated_int_ali_question']:
+                question_int_ali_input = self.int_ali_question_gate(question_int_ali_input)
+            question_final_hiddens = self.inter_align_question_rnn(question_int_ali_input, x2_mask)
+        else:
+            question_final_hiddens = question_hiddens
+
         # Merge question hiddens for answer generation
         if self.opt['question_merge'] == 'avg':
-            q_merge_weights = layers.uniform_weights(question_hiddens, x2_mask)
+            q_merge_weights = layers.uniform_weights(question_final_hiddens, x2_mask)
         elif self.opt['question_merge'] == 'self_attn':
-            q_merge_weights = self.self_attn(question_hiddens, x2_mask)
-        question_hidden = layers.weighted_avg(question_hiddens, q_merge_weights)
+            q_merge_weights = self.self_attn(question_final_hiddens, x2_mask)
+        question_hidden = layers.weighted_avg(question_final_hiddens, q_merge_weights)
 
         # Predict scores for starting and ending position
         start_scores = self.start_attn(doc_final_hiddens, question_hidden, x1_mask)

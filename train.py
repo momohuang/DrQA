@@ -84,10 +84,12 @@ parser.add_argument('--ner_dim', type=int, default=8,
 parser.add_argument('--no_wvec_align', dest='wvec_align', action='store_false')
 
 parser.add_argument('--gated_input', dest='gated_input', action='store_true')
-parser.add_argument('--gated_int_att_input', action='store_true')
+parser.add_argument('--gated_int_ali_doc', action='store_true')
+parser.add_argument('--gated_int_ali_question', action='store_true')
 
 parser.add_argument('--do_C2Q', action='store_true')
 parser.add_argument('--do_coattention', action='store_true')
+parser.add_argument('--do_my_Q2C', action='store_true')
 
 parser.add_argument('--inter_att_type', default='relu_FC')
 parser.add_argument('--inter_att_concat', default='concat')
