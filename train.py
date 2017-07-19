@@ -71,6 +71,8 @@ parser.add_argument('--question_merge', default='self_attn')
 parser.add_argument('--doc_layers', type=int, default=3)
 parser.add_argument('--question_layers', type=int, default=3)
 parser.add_argument('--hidden_size', type=int, default=128)
+parser.add_argument('--int_ali_hidden_size', type=int, default=-1) # -1 : same as hidden_size
+
 parser.add_argument('--pos', type=bool, default=True)
 parser.add_argument('--pos_size', type=int, default=56,
                     help='how many kinds of POS tags.')

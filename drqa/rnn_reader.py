@@ -124,10 +124,11 @@ class RnnDocReader(nn.Module):
 
         if opt['do_coattention']:
             assert(doc_hidden_size == question_hidden_size)
-            assert(doc_hidden_size == opt['multi_att_h'] * opt['multi_att_val'])
 
             int_ali_doc_hidden_size += doc_hidden_size
             if opt['do_multi_att']:
+                assert(doc_hidden_size == opt['multi_att_h'] * opt['multi_att_val'])
+
                 self.context4query = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
                 self.coattention = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
             else:
@@ -141,9 +142,19 @@ class RnnDocReader(nn.Module):
             if opt['gated_int_ali_doc']:
                 self.int_ali_doc_gate = layers.GatedLayer(input_size=int_ali_doc_hidden_size)
 
+            # Constructing LSTM after inter-alignment
+            if opt['int_ali_hidden_size'] != -1:
+                hsize = opt['int_ali_hidden_size']
+            else:
+                hsize = opt['hidden_size']
+
+            doc_final_hidden_size = 2 * hsize
+            if opt['concat_rnn_layers']:
+                doc_final_hidden_size *= opt['doc_layers']
+
             self.inter_align_rnn = layers.StackedBRNN(
                 input_size=int_ali_doc_hidden_size,
-                hidden_size=opt['hidden_size'],
+                hidden_size=hsize,
                 num_layers=opt['doc_layers'],
                 dropout_rate=opt['dropout_rnn'],
                 dropout_output=opt['dropout_rnn_output'],
@@ -151,6 +162,8 @@ class RnnDocReader(nn.Module):
                 rnn_type=self.RNN_TYPES[opt['rnn_type']],
                 padding=opt['rnn_padding'],
             )
+        else:
+            doc_final_hidden_size = doc_hidden_size
 
         if opt['do_my_Q2C']:
             print('Inter-aligned question vector size = ', int_ali_question_hidden_size)
@@ -159,9 +172,19 @@ class RnnDocReader(nn.Module):
             if opt['gated_int_ali_question']:
                 self.int_ali_question_gate = layers.GatedLayer(input_size=int_ali_question_hidden_size)
 
+            # Constructing LSTM after inter-alignment
+            if opt['int_ali_hidden_size'] != -1:
+                hsize = opt['int_ali_hidden_size']
+            else:
+                hsize = opt['hidden_size']
+
+            question_final_hidden_size = 2 * hsize
+            if opt['concat_rnn_layers']:
+                question_final_hidden_size *= opt['question_layers']
+
             self.inter_align_question_rnn = layers.StackedBRNN(
                 input_size=int_ali_question_hidden_size,
-                hidden_size=opt['hidden_size'],
+                hidden_size=hsize,
                 num_layers=opt['question_layers'],
                 dropout_rate=opt['dropout_rnn'],
                 dropout_output=opt['dropout_rnn_output'],
@@ -169,21 +192,23 @@ class RnnDocReader(nn.Module):
                 rnn_type=self.RNN_TYPES[opt['rnn_type']],
                 padding=opt['rnn_padding'],
             )
+        else:
+            question_final_hidden_size = question_hidden_size
 
         # Question merging
         if opt['question_merge'] not in ['avg', 'self_attn']:
             raise NotImplementedError('question_merge = %s' % opt['question_merge'])
         if opt['question_merge'] == 'self_attn':
-            self.self_attn = layers.LinearSeqAttn(question_hidden_size)
+            self.self_attn = layers.LinearSeqAttn(question_final_hidden_size)
 
         # Bilinear attention for span start/end
         self.start_attn = layers.BilinearSeqAttn(
-            doc_hidden_size,
-            question_hidden_size,
+            doc_final_hidden_size,
+            question_final_hidden_size,
         )
         self.end_attn = layers.BilinearSeqAttn(
-            doc_hidden_size,
-            question_hidden_size,
+            doc_final_hidden_size,
+            question_final_hidden_size,
         )
 
         # Store config
@@ -265,6 +290,7 @@ class RnnDocReader(nn.Module):
             my_Q2C_hiddens = self.my_Q2C(question_hiddens, doc_hiddens, x1_mask)
             question_int_ali_input = torch.cat((question_hiddens, my_Q2C_hiddens), 2)
 
+        # LSTM after inter-alignment
         if self.opt['do_C2Q'] or self.opt['do_coattention']:
             if self.opt['gated_int_ali_doc']:
                 doc_int_ali_input = self.int_ali_doc_gate(doc_int_ali_input)
@@ -284,9 +310,9 @@ class RnnDocReader(nn.Module):
             q_merge_weights = layers.uniform_weights(question_final_hiddens, x2_mask)
         elif self.opt['question_merge'] == 'self_attn':
             q_merge_weights = self.self_attn(question_final_hiddens, x2_mask)
-        question_hidden = layers.weighted_avg(question_final_hiddens, q_merge_weights)
+        question_final_hidden = layers.weighted_avg(question_final_hiddens, q_merge_weights)
 
         # Predict scores for starting and ending position
-        start_scores = self.start_attn(doc_final_hiddens, question_hidden, x1_mask)
-        end_scores = self.end_attn(doc_final_hiddens, question_hidden, x1_mask)
+        start_scores = self.start_attn(doc_final_hiddens, question_final_hidden, x1_mask)
+        end_scores = self.end_attn(doc_final_hiddens, question_final_hidden, x1_mask)
         return start_scores, end_scores # -inf to inf
