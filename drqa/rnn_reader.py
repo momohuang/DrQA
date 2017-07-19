@@ -7,14 +7,8 @@ import torch
 import torch.nn as nn
 from . import layers
 
-# Modification: add 'pos' and 'ner' features.
-# Origin: https://github.com/facebookresearch/ParlAI/tree/master/parlai/agents/drqa
-
-
 class RnnDocReader(nn.Module):
     """Network for the Document Reader module of DrQA."""
-    RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
-
     def __init__(self, opt, embedding=None, padding_idx=0):
         super(RnnDocReader, self).__init__()
         # Word embeddings
@@ -55,161 +49,76 @@ class RnnDocReader(nn.Module):
         if opt['gated_input']:
             self.gated_input = layers.GatedLayer(input_size=doc_input_size)
 
+        # Setup the vector size for [doc, question]
+        vector_sizes = [doc_input_size, opt['embedding_dim']] # it will be modified in the following code
+        print('Initially, the vector_sizes [doc, query] are', vector_sizes)
+
         # RNN document encoder
-        self.doc_rnn = layers.StackedBRNN(
-            input_size=doc_input_size,
-            hidden_size=opt['hidden_size'],
-            num_layers=opt['doc_layers'],
-            dropout_rate=opt['dropout_rnn'],
-            dropout_output=opt['dropout_rnn_output'],
-            concat_layers=opt['concat_rnn_layers'],
-            rnn_type=self.RNN_TYPES[opt['rnn_type']],
-            padding=opt['rnn_padding'],
-        )
+        self.doc_rnn = layers.RNN_from_opt(vector_sizes, opt['hidden_size'], opt)
 
         # RNN question encoder
-        self.question_rnn = layers.StackedBRNN(
-            input_size=opt['embedding_dim'],
-            hidden_size=opt['hidden_size'],
-            num_layers=opt['question_layers'],
-            dropout_rate=opt['dropout_rnn'],
-            dropout_output=opt['dropout_rnn_output'],
-            concat_layers=opt['concat_rnn_layers'],
-            rnn_type=self.RNN_TYPES[opt['rnn_type']],
-            padding=opt['rnn_padding'],
-        )
+        vector_sizes.reverse()
+        self.question_rnn = layers.RNN_from_opt(vector_sizes, opt['hidden_size'], opt)
+        vector_sizes.reverse()
 
         # Output sizes of rnn encoders
-        doc_hidden_size = 2 * opt['hidden_size']
-        question_hidden_size = 2 * opt['hidden_size']
-        if opt['concat_rnn_layers']:
-            doc_hidden_size *= opt['doc_layers']
-            question_hidden_size *= opt['question_layers']
+        print('After LSTM, the vector_sizes [doc, query] are', vector_sizes)
 
         # Inter-alignment
-        int_ali_doc_hidden_size = doc_hidden_size
-        int_ali_question_hidden_size = question_hidden_size
+        if opt['do_coattention'] and opt['do_C2Q']:
+            print('Doing coattention covers C2Q, turning off C2Q')
+            opt['do_C2Q'] = False
 
         if opt['do_C2Q']:
-            assert(doc_hidden_size == question_hidden_size)
-            if opt['do_multi_att']:
-                self.inter_align = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
-
-                # currently always do concat, because the size may differ
-                if opt['inter_att_concat'] != 'concat':
-                    print('\"inter_att_concat\" option only supports [concat] (changed to [concat])')
-                    opt['inter_att_concat'] = 'concat'
-                int_ali_doc_hidden_size += opt['multi_att_h'] * opt['multi_att_val']
-            else:
-                self.inter_align = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
-
-                if opt['inter_att_concat'] == 'fuse':
-                    int_ali_doc_hidden_size *= 1
-                    self.fusion = layers.ChoiceLayer(doc_hidden_size)
-                elif opt['inter_att_concat'] == 'concat':
-                    int_ali_doc_hidden_size *= 2
-                elif opt['inter_att_concat'] == 'concat_dot':
-                    int_ali_doc_hidden_size *= 3
-                elif opt['inter_att_concat'] == 'concat_dot_diff':
-                    int_ali_doc_hidden_size *= 4
-                else:
-                    raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
-
-        if opt['do_my_Q2C']:
-            int_ali_question_hidden_size += doc_hidden_size
-            if opt['do_multi_att']:
-                self.my_Q2C = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
-            else:
-                self.my_Q2C = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+            new_vector_sizes = vector_sizes[:]
+            self.C2Q = layers.Unidir_atten(opt, new_vector_sizes)
+            doc_vsize = new_vector_sizes[0]
 
         if opt['do_coattention']:
-            assert(doc_hidden_size == question_hidden_size)
-
-            int_ali_doc_hidden_size += doc_hidden_size
-            if opt['do_multi_att']:
-                assert(doc_hidden_size == opt['multi_att_h'] * opt['multi_att_val'])
-
-                self.context4query = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
-                self.coattention = layers.MultiAttnMatch(doc_hidden_size, opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
-            else:
-                self.context4query = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
-                self.coattention = layers.SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
-
-        if opt['do_C2Q'] or opt['do_coattention']:
-            print('Inter-aligned doc vector size = ', int_ali_doc_hidden_size)
-
-            # Gated layer
-            if opt['gated_int_ali_doc']:
-                self.int_ali_doc_gate = layers.GatedLayer(input_size=int_ali_doc_hidden_size)
-
-            # Constructing LSTM after inter-alignment
-            if opt['int_ali_hidden_size'] != -1:
-                hsize = opt['int_ali_hidden_size']
-            else:
-                hsize = opt['hidden_size']
-
-            doc_final_hidden_size = 2 * hsize
-            if opt['concat_rnn_layers']:
-                doc_final_hidden_size *= opt['doc_layers']
-
-            self.inter_align_rnn = layers.StackedBRNN(
-                input_size=int_ali_doc_hidden_size,
-                hidden_size=hsize,
-                num_layers=opt['doc_layers'],
-                dropout_rate=opt['dropout_rnn'],
-                dropout_output=opt['dropout_rnn_output'],
-                concat_layers=opt['concat_rnn_layers'],
-                rnn_type=self.RNN_TYPES[opt['rnn_type']],
-                padding=opt['rnn_padding'],
-            )
-        else:
-            doc_final_hidden_size = doc_hidden_size
+            new_vector_sizes = vector_sizes[:]
+            self.coattention = layers.Coattention(opt, new_vector_sizes)
+            doc_vsize = new_vector_sizes[0]
 
         if opt['do_my_Q2C']:
-            print('Inter-aligned question vector size = ', int_ali_question_hidden_size)
+            new_vector_sizes = list(reversed(vector_sizes))
+            self.my_Q2C = layers.Unidir_atten(opt, new_vector_sizes)
+            question_vsize = new_vector_sizes[0]
 
+        vector_sizes[0], vector_sizes[1] = doc_vsize, question_vsize
+        print('After inter-alignment, the vector_sizes [doc, query] are', vector_sizes)
+
+        # Contextual intergration
+        if opt['do_C2Q'] or opt['do_coattention']:
             # Gated layer
-            if opt['gated_int_ali_question']:
-                self.int_ali_question_gate = layers.GatedLayer(input_size=int_ali_question_hidden_size)
+            if opt['gated_int_ali_doc']:
+                self.int_ali_doc_gate = layers.GatedLayer(input_size=vector_sizes[0])
 
             # Constructing LSTM after inter-alignment
-            if opt['int_ali_hidden_size'] != -1:
-                hsize = opt['int_ali_hidden_size']
-            else:
-                hsize = opt['hidden_size']
+            self.int_ali_doc_rnn = layers.RNN_from_opt(vector_sizes,
+            opt['int_ali_hidden_size'] if opt['int_ali_hidden_size'] != -1 else opt['hidden_size'], opt)
 
-            question_final_hidden_size = 2 * hsize
-            if opt['concat_rnn_layers']:
-                question_final_hidden_size *= opt['question_layers']
+        if opt['do_my_Q2C']:
+            # Gated layer
+            if opt['gated_int_ali_question']:
+                self.int_ali_question_gate = layers.GatedLayer(input_size=vector_sizes[1])
 
-            self.inter_align_question_rnn = layers.StackedBRNN(
-                input_size=int_ali_question_hidden_size,
-                hidden_size=hsize,
-                num_layers=opt['question_layers'],
-                dropout_rate=opt['dropout_rnn'],
-                dropout_output=opt['dropout_rnn_output'],
-                concat_layers=opt['concat_rnn_layers'],
-                rnn_type=self.RNN_TYPES[opt['rnn_type']],
-                padding=opt['rnn_padding'],
-            )
-        else:
-            question_final_hidden_size = question_hidden_size
+            # Constructing LSTM after inter-alignment
+            vector_sizes.reverse()
+            self.int_ali_question_rnn = layers.RNN_from_opt(vector_sizes,
+            opt['int_ali_hidden_size'] if opt['int_ali_hidden_size'] != -1 else opt['hidden_size'], opt)
+            vector_sizes.reverse()
+
+        print('After LSTM, the vector_sizes [doc, query] are', vector_sizes)
 
         # Question merging
         if opt['question_merge'] not in ['avg', 'self_attn']:
             raise NotImplementedError('question_merge = %s' % opt['question_merge'])
         if opt['question_merge'] == 'self_attn':
-            self.self_attn = layers.LinearSeqAttn(question_final_hidden_size)
+            self.self_attn = layers.LinearSeqAttn(vector_sizes[1])
 
         # Bilinear attention for span start/end
-        self.start_attn = layers.BilinearSeqAttn(
-            doc_final_hidden_size,
-            question_final_hidden_size,
-        )
-        self.end_attn = layers.BilinearSeqAttn(
-            doc_final_hidden_size,
-            question_final_hidden_size,
-        )
+        self.start_attn = layers.BilinearSeqAttn(*vector_sizes)
+        self.end_attn = layers.BilinearSeqAttn(*vector_sizes)
 
         # Store config
         self.opt = opt
@@ -271,48 +180,35 @@ class RnnDocReader(nn.Module):
 
         # Inter-alignment
         if self.opt['do_C2Q']:
-            C2Q_hiddens = self.inter_align(doc_hiddens, question_hiddens, x2_mask)
-            if self.opt['inter_att_concat'] == 'fuse':
-                doc_int_ali_input = self.fusion(doc_hiddens, C2Q_hiddens)
-            elif self.opt['inter_att_concat'] == 'concat':
-                doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens), 2)
-            elif self.opt['inter_att_concat'] == 'concat_dot':
-                doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens), 2)
-            elif self.opt['inter_att_concat'] == 'concat_dot_diff':
-                doc_int_ali_input = torch.cat((doc_hiddens, C2Q_hiddens, doc_hiddens*C2Q_hiddens, doc_hiddens-C2Q_hiddens), 2)
+            new_doc_hiddens = self.C2Q(doc_hiddens, question_hiddens, x1_mask, x2_mask)
 
         if self.opt['do_coattention']:
-            C4Q_hiddens = self.context4query(question_hiddens, doc_hiddens, x1_mask)
-            coatt_hiddens = self.coattention(doc_hiddens, C4Q_hiddens, x2_mask)
-            doc_int_ali_input = torch.cat((doc_int_ali_input, coatt_hiddens), 2)
+            new_doc_hiddens = self.coattention(doc_hiddens, question_hiddens, x1_mask, x2_mask)
 
         if self.opt['do_my_Q2C']:
-            my_Q2C_hiddens = self.my_Q2C(question_hiddens, doc_hiddens, x1_mask)
-            question_int_ali_input = torch.cat((question_hiddens, my_Q2C_hiddens), 2)
+            new_question_hiddens = self.my_Q2C(question_hiddens, doc_hiddens, x2_mask, x1_mask)
 
-        # LSTM after inter-alignment
+        doc_hiddens, question_hiddens = new_doc_hiddens, new_question_hiddens
+
+        # RNN after inter-alignment
         if self.opt['do_C2Q'] or self.opt['do_coattention']:
             if self.opt['gated_int_ali_doc']:
-                doc_int_ali_input = self.int_ali_doc_gate(doc_int_ali_input)
-            doc_final_hiddens = self.inter_align_rnn(doc_int_ali_input, x1_mask)
-        else:
-            doc_final_hiddens = doc_hiddens
+                doc_hiddens = self.int_ali_doc_gate(doc_hiddens)
+            doc_hiddens = self.int_ali_doc_rnn(doc_hiddens, x1_mask)
 
         if self.opt['do_my_Q2C']:
             if self.opt['gated_int_ali_question']:
-                question_int_ali_input = self.int_ali_question_gate(question_int_ali_input)
-            question_final_hiddens = self.inter_align_question_rnn(question_int_ali_input, x2_mask)
-        else:
-            question_final_hiddens = question_hiddens
+                question_hiddens = self.int_ali_question_gate(question_hiddens)
+            question_hiddens = self.int_ali_question_rnn(question_hiddens, x2_mask)
 
         # Merge question hiddens for answer generation
         if self.opt['question_merge'] == 'avg':
-            q_merge_weights = layers.uniform_weights(question_final_hiddens, x2_mask)
+            q_merge_weights = layers.uniform_weights(question_hiddens, x2_mask)
         elif self.opt['question_merge'] == 'self_attn':
-            q_merge_weights = self.self_attn(question_final_hiddens, x2_mask)
-        question_final_hidden = layers.weighted_avg(question_final_hiddens, q_merge_weights)
+            q_merge_weights = self.self_attn(question_hiddens, x2_mask)
+        question_hiddens = layers.weighted_avg(question_hiddens, q_merge_weights)
 
         # Predict scores for starting and ending position
-        start_scores = self.start_attn(doc_final_hiddens, question_final_hidden, x1_mask)
-        end_scores = self.end_attn(doc_final_hiddens, question_final_hidden, x1_mask)
+        start_scores = self.start_attn(doc_hiddens, question_hiddens, x1_mask)
+        end_scores = self.end_attn(doc_hiddens, question_hiddens, x1_mask)
         return start_scores, end_scores # -inf to inf

@@ -68,8 +68,7 @@ parser.add_argument('--rnn_padding', action='store_true',
                     help='perform rnn padding (much slower but more accurate).')
 # model
 parser.add_argument('--question_merge', default='self_attn')
-parser.add_argument('--doc_layers', type=int, default=3)
-parser.add_argument('--question_layers', type=int, default=3)
+parser.add_argument('--rnn_layers', type=int, default=3)
 parser.add_argument('--hidden_size', type=int, default=128)
 parser.add_argument('--int_ali_hidden_size', type=int, default=-1) # -1 : same as hidden_size
 

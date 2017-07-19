@@ -1,39 +1,27 @@
-Original : dev EM: 68.61873226111636 F1: 77.89724470528145
-Original : dev EM: 68.67549668874172 F1: 78.03895984986448
-no Exact match : dev EM: 66.9441816461684 F1: 76.43481553600684
-tune all embedding : dev EM: 68.40113528855251 F1: 77.82505881327128
+Original :                                                                      dev EM: 68.62 F1: 77.90
+Original :                                                                      dev EM: 68.68 F1: 78.04
+no Exact match :                                                                dev EM: 66.94 F1: 76.43
+tune all embedding :                                                            dev EM: 68.40 F1: 77.83
 >>> Below all use improved tokenization (handle dashes and [] etc.)
 
 ------ Below are run on my original machine (in output.log) ------
-Improved tokenization : dev EM: 69.25260170293284 F1: 78.44314735464995
-Improved tokenization : dev EM: 69.10122989593188 F1: 78.56207404335898
-Random vector for unknown words : dev EM: 69.05392620624409 F1: 78.11589025440102
-No word vector pre-alignment : dev EM: 68.39167455061495 F1: 77.55068472418104
-Gated input for the first LSTM layer : dev EM: 69.18637653736991 F1: 78.31315547097128
-Improved tokenization : dev EM: 69.70671712393566 F1: 78.87747327559043
-C2Q attention relu_FC, concat : dev EM: 70.70955534531693 F1: 79.68814222485408
-Improved tokenization (skip padding in BiLSTM) : dev EM: 69.18637653736991 F1: 78.70554863209655
-C2Q attention multi-attention (h=6, dk=128, dv=128), concat : dev EM: 70.82308420056765 F1: 79.63221044112676
-C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : dev EM: 70.55818353831599 F1: 79.2843292181444
-C2Q attention multi-attention (h=6, dk=128, dv=128, p=0.2), concat : TODO
-
------- Below are run on gcrgdw136 (in output_gcrgdw136.log) ------
-Improved tokenization (mask input in _forward_unpadded RNN) : dev EM: 68.97824030274361 F1: 78.22092455491139
-C2Q attention trainable_inner_prod_ext, concat : dev EM: 69.75402081362347 F1: 78.86182050000271
-C2Q attention relu_FC, concat : TODO
-
------- Below are run on toronto-g1 GPU0 (in output_g1_gpu0.log) ------
-C2Q attention trainable_inner_prod_ext, concat_dot_diff : dev EM: 70.19867549668874 F1: 79.08327992606868
-
------- Below are run on toronto-g1 GPU2 (in output_g1_gpu2.log) ------
-C2Q attention relu_FC, concat_dot_diff : dev EM: 70.1135288552507 F1: 79.34874889337425
-
------- Below are run on toronto-g1 GPU3 (in output_g1_gpu3.log) ------
-C2Q attention relu_FC, concat_dot : dev EM: 70.28382213812678 F1: 79.06876230820468
-C2Q attention trainable_inner_prod_ext, concat_dot : dev EM: 70.18921475875118 F1: 79.03401814647371
-
------- Below are run on toronto-g1 GPU5 (in output_g1_gpu5.log) ------
-C2Q attention relu_FC, concat : TODO
+Improved tokenization :                                                         dev EM: 69.25 F1: 78.44
+Improved tokenization :                                                         dev EM: 69.10 F1: 78.56
+Random vector for unknown words :                                               dev EM: 69.05 F1: 78.12
+No word vector pre-alignment :                                                  dev EM: 68.39 F1: 77.55
+Gated input for the first LSTM layer :                                          dev EM: 69.19 F1: 78.31
+Improved tokenization :                                                         dev EM: 69.71 F1: 78.88
+C2Q attention relu_FC, concat :                                                 dev EM: 70.71 F1: 79.69
+Improved tokenization (skip padding in BiLSTM) :                                dev EM: 69.19 F1: 78.71
+C2Q attention multi-attention (h=6, dk=128, dv=128), concat :                   dev EM: 70.82 F1: 79.63
+C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat :           dev EM: 70.56 F1: 79.28
+C2Q attention multi-attention (h=6, dk=128, dv=128, p=0.2), concat :            dev EM: 70.52 F1: 79.24
+C2Q attention relu_FC, concat, 2-layer LSTM :                                   dev EM: 70.44 F1: 79.20
+C2Q + Coattention relu_FC, concat :                                             dev EM: 70.22 F1: 78.94
+C2Q + Coattention multi-attention (h=6, dk=128, dv=128), concat :               dev EM: 69.70 F1: 79.04
+C2Q + My Q2C relu_FC, concat :                                                  dev EM: 69.94 F1: 78.79
+C2Q + My Q2C multi-attention (h=6, dk=128, dv=128), concat :                    dev EM: 70.69 F1: 79.33
+C2Q + My Q2C relu_FC, concat, int_ali_hidden_size=256(hidden_size=128) :        dev EM: 70.34 F1: 79.47
 
 =====================================================================
 Result for g2 may be quite different, because it is not using exactly the same preprocessed data
@@ -41,12 +29,39 @@ X: unreliable results due to different encoding between Windows and Linux
 =====================================================================
 
 ------ Below are run on toronto-g2 GPU4 (in output_g2_gpu4.log) ------
-C2Q attention multi-attention (h=6, dk=128, dv=128), concat : dev EM: 69.6972563859981 F1: 78.89387943494151 X
-C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : dev EM: 70.18921475875118 F1: 79.08214019489245 X
-C2Q attention multi-attention (h=6, dk=128, dv=128), concat : dev EM: 70.69063386944181 F1: 79.56901742835518
-C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : TODO
+C2Q attention multi-attention (h=6, dk=128, dv=128), concat : X
+C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat : X
+C2Q attention multi-attention (h=6, dk=128, dv=128), concat :                   dev EM: 70.69 F1: 79.57
+C2Q attention multi-attention w/ ReLU (h=6, dk=128, dv=128), concat :           dev EM: 70.20 F1: 79.24
+C2Q + My Q2C relu_FC, concat :                                                  dev EM: 69.95 F1: 79.02
+C2Q + My Q2C multi-attention (h=1, dk=768, dv=768) :                            dev EM: 70.00 F1: 78.42
+C2Q + Coattention relu_FC, concat, int_ali_hidden_size=256(hidden_size=128) :   dev EM: 69.56 F1: 78.64
 
 ------ Below are run on toronto-g2 GPU5 (in output_g2_gpu5.log) ------
-C2Q attention relu_FC, fuse : dev EM: 69.98107852412488 F1: 79.0443305460776 X
-C2Q attention relu_FC, concat : dev EM: 69.91485335856197 F1: 79.25153281573044 X
-C2Q attention relu_FC, concat : TODO
+C2Q attention relu_FC, fuse : X
+C2Q attention relu_FC, concat : X
+C2Q attention relu_FC, concat :                                                 dev EM: 70.61 F1: 79.43
+C2Q attention multi-attention (h=6, dk=128, dv=128, p=0.1), concat :            dev EM: 70.77 F1: 79.25
+C2Q + Coattention multi-attention (h=6, dk=128, dv=128, p=0.1), concat :        dev EM: 69.88 F1: 79.17
+C2Q attention relu_FC, concat (gated_int_ali_doc) :                             dev EM: 70.14 F1: 79.14
+C2Q + Coattention relu_FC, concat (gated_int_ali_doc) :                         dev EM: 69.90 F1: 78.96
+C2Q attention relu_FC, concat, 4-layer LSTM :                                   dev EM: 70.77 F1: 79.71
+C2Q attention relu_FC, concat, hidden_size=192(default=128) :                   dev EM: 70.19 F1: 79.35
+
+------ Below are run on gcrgdw136 (in output_gcrgdw136.log) ------
+Improved tokenization (mask input in _forward_unpadded RNN) :                   dev EM: 68.98 F1: 78.22
+C2Q attention trainable_inner_prod_ext, concat :                                dev EM: 69.75 F1: 78.86
+C2Q attention relu_FC, concat :                                                 dev EM: 70.82 F1: 79.85
+
+------ Below are run on toronto-g1 GPU0 (in output_g1_gpu0.log) ------
+C2Q attention trainable_inner_prod_ext, concat_dot_diff :                       dev EM: 70.20 F1: 79.08
+
+------ Below are run on toronto-g1 GPU2 (in output_g1_gpu2.log) ------
+C2Q attention relu_FC, concat_dot_diff :                                        dev EM: 70.11 F1: 79.35
+
+------ Below are run on toronto-g1 GPU3 (in output_g1_gpu3.log) ------
+C2Q attention relu_FC, concat_dot :                                             dev EM: 70.28 F1: 79.07
+C2Q attention trainable_inner_prod_ext, concat_dot :                            dev EM: 70.19 F1: 79.03
+
+------ Below are run on toronto-g1 GPU5 (in output_g1_gpu5.log) ------
+C2Q attention relu_FC, concat :                                                 dev EM: 70.42 F1: 79.56

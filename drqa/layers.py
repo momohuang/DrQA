@@ -140,30 +140,57 @@ class StackedBRNN(nn.Module):
         return output
 
 
+def RNN_from_opt(input_sizes, hidden_size_, opt):
+    RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
+    new_rnn = StackedBRNN(
+        input_size=input_sizes[0],
+        hidden_size=hidden_size_,
+        num_layers=opt['rnn_layers'],
+        dropout_rate=opt['dropout_rnn'],
+        dropout_output=opt['dropout_rnn_output'],
+        concat_layers=opt['concat_rnn_layers'],
+        rnn_type=RNN_TYPES[opt['rnn_type']],
+        padding=opt['rnn_padding'],
+    )
+    input_sizes[0] = 2 * opt['hidden_size']
+    if opt['concat_rnn_layers']:
+        input_sizes[0] *= opt['rnn_layers']
+    return new_rnn
+
+
 class MultiAttnMatch(nn.Module):
     """
-    Given sequences X and Y, match sequence Y to each element in X through multi-attention
+    Given sequences X and Y, match sequence Y to each element in X through multi-attention. or
+    Given sequences X, Y and Z, match sequence Z to each element in X through multi-attention accord. to Y.
     """
-    def __init__(self, d_in, d_key, d_val, h, do_relu = False, att_dropout_p = 0):
+    def __init__(self, d_in1, d_in2, d_key, d_val, h, do_relu = False, att_dropout_p = 0, d_in3 = None):
         super(MultiAttnMatch, self).__init__()
-        self.to_query =  nn.Linear(d_in, h * d_key)
-        self.to_key = nn.Linear(d_in, h * d_key)
-        self.to_value = nn.Linear(d_in, h * d_val)
+        if d_in3 is None:
+            d_in3 = d_in2
+
+        self.to_query =  nn.Linear(d_in1, h * d_key)
+        self.to_key = nn.Linear(d_in2, h * d_key)
+        self.to_value = nn.Linear(d_in3, h * d_val)
+
         self.h = h
         self.d_key = d_key
         self.d_val = d_val
         self.do_relu = do_relu
         self.att_dropout_p = att_dropout_p
 
-    def forward(self, x, y, y_mask):
+    def forward(self, x, y, y_mask, z = None):
         """
         Input shapes:
-            x = batch * len1 * d_in
-            y = batch * len2 * d_in
+            x = batch * len1 * d_in1
+            y = batch * len2 * d_in2
             y_mask = batch * len2
+            z = batch * len2 * d_in3
         Output shapes:
             matched_seq = batch * len1 * (h*d_val)
         """
+        if z is None:
+            z = y
+
         queries = self.to_query(x.view(-1, x.size(2))).view(x.size(0), x.size(1), self.h, self.d_key)
         if self.do_relu:
             queries = F.relu(queries)
@@ -186,8 +213,8 @@ class MultiAttnMatch(nn.Module):
         if self.att_dropout_p > 0:
             alpha = F.dropout(alpha, p=self.att_dropout_p, training=self.training)
 
-        values = self.to_value(y.view(-1, y.size(2))).view(x.size(0), y.size(1), self.h, self.d_val)
-        values = values.transpose(1,2).contiguous().view(-1, y.size(1), self.d_val)
+        values = self.to_value(z.view(-1, z.size(2))).view(x.size(0), z.size(1), self.h, self.d_val)
+        values = values.transpose(1,2).contiguous().view(-1, z.size(1), self.d_val)
         if self.do_relu:
             values = F.relu(values)
         # values: (batch*h) * len2 * d_val
@@ -200,7 +227,8 @@ class MultiAttnMatch(nn.Module):
 
 class SeqAttnMatch(nn.Module):
     """
-    Given sequences X and Y, match sequence Y to each element in X.
+    Given sequences X and Y, match sequence Y to each element in X. or
+    Given sequences X, Y and Z, match sequence Z to each element in X according to Y.
     * o_i = sum(alpha_ij * y_j) for i in X
     * alpha_ij = softmax(proj(y_j) * proj(x_i))
     """
@@ -233,14 +261,18 @@ class SeqAttnMatch(nn.Module):
             raise NotImplementedError('normalize = %s' % normalize)
         self.normalize = normalize
 
-    def forward(self, x, y, y_mask):
+    def forward(self, x, y, y_mask, z=None):
         """Input shapes:
             x = batch * len1 * h
             y = batch * len2 * h
             y_mask = batch * len2
+            z = batch * len2 * h' or None
         Output shapes:
-            matched_seq = batch * len1 * h
+            matched_seq = batch * len1 * h'
         """
+        if z is None:
+            z = y
+
         # Project vectors
         if self.attention_type == 'relu_FC':
             x_proj = self.linear(x.view(-1, x.size(2))).view(x.size())
@@ -279,7 +311,7 @@ class SeqAttnMatch(nn.Module):
             alpha = alpha_flat.view(-1, y.size(1), x.size(1)).transpose(1,2)
 
         # Take weighted average
-        matched_seq = alpha.bmm(y)
+        matched_seq = alpha.bmm(z)
         return matched_seq
 
 
@@ -305,6 +337,7 @@ class BilinearSeqAttn(nn.Module):
         xWy.data.masked_fill_(x_mask.data, -float('inf'))
         return xWy
 
+
 class LinearSeqAttn(nn.Module):
     """Self attention over a sequence:
     * o_i = softmax(Wx_i) for x_i in X.
@@ -324,6 +357,76 @@ class LinearSeqAttn(nn.Module):
         alpha = F.softmax(scores)
         return alpha
 
+
+class Unidir_atten(nn.Module):
+    def __init__(self, opt, hidden_sz_ls):
+        super(Unidir_atten, self).__init__()
+        x1_hidden_size, x2_hidden_size = hidden_sz_ls[0], hidden_sz_ls[1]
+
+        if opt['do_multi_att']:
+            self.align = MultiAttnMatch(x1_hidden_size, x2_hidden_size,
+            opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
+
+            # currently always do concat, because the size may differ
+            if opt['inter_att_concat'] != 'concat':
+                print('Multi attention, \"inter_att_concat\" option only supports [concat] (changed to [concat])')
+                opt['inter_att_concat'] = 'concat'
+            hidden_sz_ls[0] += opt['multi_att_h'] * opt['multi_att_val']
+        else:
+            assert(x1_hidden_size == x2_hidden_size)
+            self.align = SeqAttnMatch(x1_hidden_size, opt['inter_att_type'])
+
+            if opt['inter_att_concat'] == 'fuse':
+                hidden_sz_ls[0] *= 1
+                self.fusion = ChoiceLayer(x1_hidden_size)
+            elif opt['inter_att_concat'] == 'concat':
+                hidden_sz_ls[0] *= 2
+            elif opt['inter_att_concat'] == 'concat_dot':
+                hidden_sz_ls[0] *= 3
+            elif opt['inter_att_concat'] == 'concat_dot_diff':
+                hidden_sz_ls[0] *= 4
+            else:
+                raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
+
+        self.opt = opt
+    def forward(self, x1, x2, x1_mask, x2_mask):
+        att_hiddens = self.align(x1, x2, x2_mask)
+
+        if self.opt['inter_att_concat'] == 'fuse':
+            new_x1 = self.fusion(x1, att_hiddens)
+        elif self.opt['inter_att_concat'] == 'concat':
+            new_x1 = torch.cat((x1, att_hiddens), 2)
+        elif self.opt['inter_att_concat'] == 'concat_dot':
+            new_x1 = torch.cat((x1, att_hiddens, x1*att_hiddens), 2)
+        elif self.opt['inter_att_concat'] == 'concat_dot_diff':
+            new_x1 = torch.cat((x1, att_hiddens, x1*att_hiddens, x1-att_hiddens), 2)
+        return new_x1
+
+
+class Coattention(nn.Module):
+    def __init__(self, opt, hidden_sz_ls):
+        super(Coattention, self).__init__()
+        doc_hidden_size, question_hidden_size = hidden_sz_ls[0], hidden_sz_ls[1]
+
+        if opt['do_multi_att']:
+            self.query2context = MultiAttnMatch(question_hidden_size, doc_hidden_size,
+            opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
+            self.coattention = MultiAttnMatch(doc_hidden_size, question_hidden_size,
+            opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'], d_in3 = doc_hidden_size + question_hidden_size)
+        else:
+            assert(doc_hidden_size == question_hidden_size)
+            self.query2context = SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+            self.coattention = SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+
+        # always concat according to the original paper
+        hidden_sz_ls[0] += doc_hidden_size + question_hidden_size
+    def forward(self, x1, x2, x1_mask, x2_mask):
+        Q2C_hiddens = self.query2context(x2, x1, x1_mask)
+        coatt_hiddens = self.coattention(x1, x2, x2_mask, torch.cat((x2, Q2C_hiddens), 2))
+        new_x1 = torch.cat((x1, coatt_hiddens), 2)
+        return new_x1
+
+
 class ChoiceLayer(nn.Module):
     def __init__(self, input_size):
         super(ChoiceLayer, self).__init__()
@@ -335,6 +438,7 @@ class ChoiceLayer(nn.Module):
         assert(x1.size() == x2.size())
         g = F.sigmoid(self.linear(torch.cat((x1, x2), 2).view(-1, 2*x1.size(-1))).view(x1.size()))
         return g * x1 + (1-g) * x2
+
 
 class GatedLayer(nn.Module):
     def __init__(self, input_size):
