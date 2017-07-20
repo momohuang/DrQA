@@ -61,7 +61,7 @@ parser.add_argument('-lr', '--learning_rate', type=float, default=0.1,
 parser.add_argument('-mm', '--momentum', type=float, default=0,
                     help='only applied to SGD.')
 parser.add_argument('-tp', '--tune_partial', type=int, default=1000,
-                    help='finetune top-x embeddings.')
+                    help='finetune top-x embeddings (including <PAD>, <UNK>).')
 parser.add_argument('--fix_embeddings', action='store_true',
                     help='if true, `tune_partial` will be ignored.')
 parser.add_argument('--rnn_padding', action='store_true',
@@ -165,6 +165,7 @@ def main():
         epoch_0 = 1
 
     model.setup_eval_embed(dev_embedding)
+    log.info("[dev] Total number of params: {}".format(model.total_param))
 
     if args.cuda:
         model.cuda()

@@ -59,6 +59,12 @@ class LEGOReaderModel(object):
         if state_dict:
             self.optimizer.load_state_dict(state_dict['optimizer'])
 
+        if opt['fix_embeddings']:
+            wvec_size = 0
+        else:
+            wvec_size = (opt['vocab_size'] - opt['tune_partial']) * opt['embedding_dim']
+        self.total_param = sum([p.nelement() for p in parameters]) - wvec_size
+
     def update(self, ex):
         # Train mode
         self.network.train()
@@ -146,19 +152,19 @@ class LEGOReaderModel(object):
                                                padding_idx = padding_idx)
         self.network.eval_embed.weight.data = eval_embed
         for p in self.network.eval_embed.parameters():
-            p.volatile = True
+            p.requires_grad = False
         self.eval_embed_transfer = True
 
     def update_eval_embed(self):
         # update evaluation embedding to trained embedding
-        offset = self.opt['tune_partial'] + 2
+        offset = self.opt['tune_partial']
         self.network.eval_embed.weight.data[0:offset] \
             = self.network.embedding.weight.data[0:offset]
 
     def reset_embeddings(self):
         # Reset fixed embeddings to original value
         if self.opt['tune_partial'] > 0:
-            offset = self.opt['tune_partial'] + 2 # <PAD> and <UNK>
+            offset = self.opt['tune_partial']
             if offset < self.network.embedding.weight.data.size(0):
                 self.network.embedding.weight.data[offset:] \
                     = self.network.fixed_embedding

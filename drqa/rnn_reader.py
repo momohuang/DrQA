@@ -17,13 +17,14 @@ class RnnDocReader(nn.Module):
                                       padding_idx=padding_idx)
         if embedding is not None:
             self.embedding.weight.data = embedding
-            if opt['fix_embeddings']:
-                assert opt['tune_partial'] == 0
+            if opt['fix_embeddings'] or opt['tune_partial'] == 0:
+                opt['fix_embeddings'] = True
+                opt['tune_partial'] = 0
                 for p in self.embedding.parameters():
                     p.requires_grad = False
-            elif opt['tune_partial'] > 0:
-                assert opt['tune_partial'] + 2 < embedding.size(0)
-                fixed_embedding = embedding[opt['tune_partial'] + 2:]
+            else:
+                assert opt['tune_partial'] < embedding.size(0)
+                fixed_embedding = embedding[opt['tune_partial']:]
                 # a persistent buffer for the nn.Module
                 self.register_buffer('fixed_embedding', fixed_embedding)
                 self.fixed_embedding = fixed_embedding
@@ -50,51 +51,46 @@ class RnnDocReader(nn.Module):
             self.gated_input = layers.GatedLayer(input_size=doc_input_size)
 
         # Setup the vector size for [doc, question]
-        vector_sizes = [doc_input_size, opt['embedding_dim']] # it will be modified in the following code
-        print('Initially, the vector_sizes [doc, query] are', vector_sizes)
+        # they will be modified in the following code
+        doc_hidden_size, que_hidden_size = doc_input_size, opt['embedding_dim']
+        print('Initially, the vector_sizes [doc, query] are', doc_hidden_size, que_hidden_size)
 
         # RNN document encoder
-        self.doc_rnn = layers.RNN_from_opt(vector_sizes, opt['hidden_size'], opt)
+        self.doc_rnn, doc_hidden_size = layers.RNN_from_opt(doc_hidden_size, opt['hidden_size'], opt)
 
         # RNN question encoder
-        vector_sizes.reverse()
-        self.question_rnn = layers.RNN_from_opt(vector_sizes, opt['hidden_size'], opt)
-        vector_sizes.reverse()
+        self.question_rnn, que_hidden_size = layers.RNN_from_opt(que_hidden_size, opt['hidden_size'], opt)
 
         # Output sizes of rnn encoders
-        print('After LSTM, the vector_sizes [doc, query] are', vector_sizes)
+        print('After LSTM, the vector_sizes [doc, query] are', doc_hidden_size, que_hidden_size)
 
         # Inter-alignment
         if opt['do_coattention'] and opt['do_C2Q']:
-            print('Doing coattention covers C2Q, turning off C2Q')
+            print('Doing coattention also does C2Q, turning off C2Q')
             opt['do_C2Q'] = False
 
         if opt['do_C2Q']:
-            new_vector_sizes = vector_sizes[:]
-            self.C2Q = layers.Unidir_atten(opt, new_vector_sizes)
-            doc_vsize = new_vector_sizes[0]
-
+            self.C2Q = layers.Unidir_atten(opt, doc_hidden_size, que_hidden_size)
         if opt['do_coattention']:
-            new_vector_sizes = vector_sizes[:]
-            self.coattention = layers.Coattention(opt, new_vector_sizes)
-            doc_vsize = new_vector_sizes[0]
-
+            self.coattention = layers.Coattention(opt, doc_hidden_size, que_hidden_size)
         if opt['do_my_Q2C']:
-            new_vector_sizes = list(reversed(vector_sizes))
-            self.my_Q2C = layers.Unidir_atten(opt, new_vector_sizes)
-            question_vsize = new_vector_sizes[0]
+            self.my_Q2C = layers.Unidir_atten(opt, doc_hidden_size, que_hidden_size, reverse=True)
 
-        vector_sizes[0], vector_sizes[1] = doc_vsize, question_vsize
-        print('After inter-alignment, the vector_sizes [doc, query] are', vector_sizes)
+        doc_hidden_size = self.coattention.output_size if opt['do_coattention'] else \
+                          self.C2Q.output_size         if opt['do_C2Q'] else \
+                          doc_hidden_size
+        que_hidden_size = self.my_Q2C.output_size      if opt['do_my_Q2C'] else \
+                          que_hidden_size
+        print('After inter-alignment, the vector_sizes [doc, query] are', doc_hidden_size, que_hidden_size)
 
-        # Contextual intergration
+        # Contextual integration
         if opt['do_C2Q'] or opt['do_coattention']:
             # Gated layer
             if opt['gated_int_ali_doc']:
                 self.int_ali_doc_gate = layers.GatedLayer(input_size=vector_sizes[0])
 
             # Constructing LSTM after inter-alignment
-            self.int_ali_doc_rnn = layers.RNN_from_opt(vector_sizes,
+            self.int_ali_doc_rnn, doc_hidden_size = layers.RNN_from_opt(doc_hidden_size,
             opt['int_ali_hidden_size'] if opt['int_ali_hidden_size'] != -1 else opt['hidden_size'], opt)
 
         if opt['do_my_Q2C']:
@@ -103,22 +99,20 @@ class RnnDocReader(nn.Module):
                 self.int_ali_question_gate = layers.GatedLayer(input_size=vector_sizes[1])
 
             # Constructing LSTM after inter-alignment
-            vector_sizes.reverse()
-            self.int_ali_question_rnn = layers.RNN_from_opt(vector_sizes,
+            self.int_ali_question_rnn, que_hidden_size = layers.RNN_from_opt(que_hidden_size,
             opt['int_ali_hidden_size'] if opt['int_ali_hidden_size'] != -1 else opt['hidden_size'], opt)
-            vector_sizes.reverse()
 
-        print('After LSTM, the vector_sizes [doc, query] are', vector_sizes)
+        print('After LSTM, the vector_sizes [doc, query] are', doc_hidden_size, que_hidden_size)
 
         # Question merging
         if opt['question_merge'] not in ['avg', 'self_attn']:
             raise NotImplementedError('question_merge = %s' % opt['question_merge'])
         if opt['question_merge'] == 'self_attn':
-            self.self_attn = layers.LinearSeqAttn(vector_sizes[1])
+            self.self_attn = layers.LinearSeqAttn(que_hidden_size)
 
         # Bilinear attention for span start/end
-        self.start_attn = layers.BilinearSeqAttn(*vector_sizes)
-        self.end_attn = layers.BilinearSeqAttn(*vector_sizes)
+        self.start_attn = layers.BilinearSeqAttn(doc_hidden_size, que_hidden_size)
+        self.end_attn = layers.BilinearSeqAttn(doc_hidden_size, que_hidden_size)
 
         # Store config
         self.opt = opt
@@ -134,12 +128,8 @@ class RnnDocReader(nn.Module):
         x2_mask = question padding mask        [batch * len_q]
         """
         # Word embedding for both document and question
-        if self.training:
-            x1_emb = self.embedding(x1)
-            x2_emb = self.embedding(x2)
-        else:
-            x1_emb = self.eval_embed(x1)
-            x2_emb = self.eval_embed(x2)
+        emb = self.embedding if self.training else self.eval_embed
+        x1_emb, x2_emb = emb(x1), emb(x2)
 
         # Dropout on embeddings
         if self.opt['dropout_emb'] > 0:
@@ -179,16 +169,13 @@ class RnnDocReader(nn.Module):
         question_hiddens = self.question_rnn(x2_input, x2_mask)
 
         # Inter-alignment
-        if self.opt['do_C2Q']:
-            new_doc_hiddens = self.C2Q(doc_hiddens, question_hiddens, x1_mask, x2_mask)
-
-        if self.opt['do_coattention']:
-            new_doc_hiddens = self.coattention(doc_hiddens, question_hiddens, x1_mask, x2_mask)
-
-        if self.opt['do_my_Q2C']:
-            new_question_hiddens = self.my_Q2C(question_hiddens, doc_hiddens, x2_mask, x1_mask)
-
-        doc_hiddens, question_hiddens = new_doc_hiddens, new_question_hiddens
+        doc_align = self.coattention if self.opt['do_coattention'] else \
+                    self.C2Q         if self.opt['do_C2Q'] else \
+                    lambda a,b,c,d: a
+        que_align = self.my_Q2C      if self.opt['do_my_Q2C'] else \
+                    lambda a,b,c,d: b
+        doc_hiddens, question_hiddens = doc_align(doc_hiddens, question_hiddens, x1_mask, x2_mask), \
+                                        que_align(doc_hiddens, question_hiddens, x1_mask, x2_mask)
 
         # RNN after inter-alignment
         if self.opt['do_C2Q'] or self.opt['do_coattention']:

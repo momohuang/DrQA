@@ -140,10 +140,10 @@ class StackedBRNN(nn.Module):
         return output
 
 
-def RNN_from_opt(input_sizes, hidden_size_, opt):
+def RNN_from_opt(input_size_, hidden_size_, opt):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
     new_rnn = StackedBRNN(
-        input_size=input_sizes[0],
+        input_size=input_size_,
         hidden_size=hidden_size_,
         num_layers=opt['rnn_layers'],
         dropout_rate=opt['dropout_rnn'],
@@ -152,10 +152,10 @@ def RNN_from_opt(input_sizes, hidden_size_, opt):
         rnn_type=RNN_TYPES[opt['rnn_type']],
         padding=opt['rnn_padding'],
     )
-    input_sizes[0] = 2 * opt['hidden_size']
+    output_size = 2 * hidden_size_
     if opt['concat_rnn_layers']:
-        input_sizes[0] *= opt['rnn_layers']
-    return new_rnn
+        output_size *= opt['rnn_layers']
+    return new_rnn, output_size
 
 
 class MultiAttnMatch(nn.Module):
@@ -359,9 +359,10 @@ class LinearSeqAttn(nn.Module):
 
 
 class Unidir_atten(nn.Module):
-    def __init__(self, opt, hidden_sz_ls):
+    def __init__(self, opt, x1_hidden_size, x2_hidden_size, reverse=False):
         super(Unidir_atten, self).__init__()
-        x1_hidden_size, x2_hidden_size = hidden_sz_ls[0], hidden_sz_ls[1]
+        if reverse:
+            x1_hidden_size, x2_hidden_size = x2_hidden_size, x1_hidden_size
 
         if opt['do_multi_att']:
             self.align = MultiAttnMatch(x1_hidden_size, x2_hidden_size,
@@ -371,27 +372,31 @@ class Unidir_atten(nn.Module):
             if opt['inter_att_concat'] != 'concat':
                 print('Multi attention, \"inter_att_concat\" option only supports [concat] (changed to [concat])')
                 opt['inter_att_concat'] = 'concat'
-            hidden_sz_ls[0] += opt['multi_att_h'] * opt['multi_att_val']
+            self.output_size = x1_hidden_size + opt['multi_att_h'] * opt['multi_att_val']
         else:
             assert(x1_hidden_size == x2_hidden_size)
             self.align = SeqAttnMatch(x1_hidden_size, opt['inter_att_type'])
 
+            self.output_size = x1_hidden_size
             if opt['inter_att_concat'] == 'fuse':
-                hidden_sz_ls[0] *= 1
+                self.output_size *= 1
                 self.fusion = ChoiceLayer(x1_hidden_size)
             elif opt['inter_att_concat'] == 'concat':
-                hidden_sz_ls[0] *= 2
+                self.output_size *= 2
             elif opt['inter_att_concat'] == 'concat_dot':
-                hidden_sz_ls[0] *= 3
+                self.output_size *= 3
             elif opt['inter_att_concat'] == 'concat_dot_diff':
-                hidden_sz_ls[0] *= 4
+                self.output_size *= 4
             else:
                 raise NotImplementedError('inter_att_concat: %s' % opt['inter_att_concat'])
 
         self.opt = opt
+        self.reverse = reverse
     def forward(self, x1, x2, x1_mask, x2_mask):
-        att_hiddens = self.align(x1, x2, x2_mask)
+        if self.reverse:
+            x1, x1_mask, x2, x2_mask = x2, x2_mask, x1, x1_mask
 
+        att_hiddens = self.align(x1, x2, x2_mask)
         if self.opt['inter_att_concat'] == 'fuse':
             new_x1 = self.fusion(x1, att_hiddens)
         elif self.opt['inter_att_concat'] == 'concat':
@@ -404,23 +409,28 @@ class Unidir_atten(nn.Module):
 
 
 class Coattention(nn.Module):
-    def __init__(self, opt, hidden_sz_ls):
+    def __init__(self, opt, x1_hidden_size, x2_hidden_size, reverse=False):
         super(Coattention, self).__init__()
-        doc_hidden_size, question_hidden_size = hidden_sz_ls[0], hidden_sz_ls[1]
+        if reverse:
+            x1_hidden_size, x2_hidden_size = x2_hidden_size, x1_hidden_size
 
         if opt['do_multi_att']:
-            self.query2context = MultiAttnMatch(question_hidden_size, doc_hidden_size,
+            self.query2context = MultiAttnMatch(x2_hidden_size, x1_hidden_size,
             opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'])
-            self.coattention = MultiAttnMatch(doc_hidden_size, question_hidden_size,
-            opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'], d_in3 = doc_hidden_size + question_hidden_size)
+            self.coattention = MultiAttnMatch(x1_hidden_size, x2_hidden_size,
+            opt['multi_att_key'], opt['multi_att_val'], opt['multi_att_h'], do_relu = opt['multi_att_do_relu'], att_dropout_p = opt['multi_att_dropout'], d_in3 = x1_hidden_size + x2_hidden_size)
         else:
-            assert(doc_hidden_size == question_hidden_size)
-            self.query2context = SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
-            self.coattention = SeqAttnMatch(doc_hidden_size, opt['inter_att_type'])
+            assert(x1_hidden_size == x2_hidden_size)
+            self.query2context = SeqAttnMatch(x1_hidden_size, opt['inter_att_type'])
+            self.coattention = SeqAttnMatch(x1_hidden_size, opt['inter_att_type'])
 
         # always concat according to the original paper
-        hidden_sz_ls[0] += doc_hidden_size + question_hidden_size
+        self.output_size = x1_hidden_size + x1_hidden_size + x2_hidden_size
+        self.reverse = reverse
     def forward(self, x1, x2, x1_mask, x2_mask):
+        if self.reverse:
+            x1, x1_mask, x2, x2_mask = x2, x2_mask, x1, x1_mask
+
         Q2C_hiddens = self.query2context(x2, x1, x1_mask)
         coatt_hiddens = self.coattention(x1, x2, x2_mask, torch.cat((x2, Q2C_hiddens), 2))
         new_x1 = torch.cat((x1, coatt_hiddens), 2)
